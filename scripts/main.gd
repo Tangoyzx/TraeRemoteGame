@@ -9,14 +9,51 @@ const OrbitSwordScene := preload("res://scripts/weapons/orbit_sword.gd")
 const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
 const MAP_SIZE := Vector2(12800.0, 7200.0)
 const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
-const ENEMY_CONFIG := {
-	"radius": 18.0,
-	"max_hp": 1,
-	"damage": 1,
-	"speed": 115.0,
-	"score_value": 1,
+const BASIC_ENEMY_RADIUS := 18.0
+const BASIC_ENEMY_SPEED := 115.0
+const ENEMY_CONFIGS := {
+	"basic": {
+		"name": "初级怪",
+		"radius": BASIC_ENEMY_RADIUS,
+		"max_hp": 1,
+		"damage": 1,
+		"speed": BASIC_ENEMY_SPEED,
+		"score_value": 1,
+		"body_color": Color(0.92, 0.20, 0.20, 1.0),
+		"outline_color": Color(1.0, 0.68, 0.68, 1.0),
+	},
+	"chubby": {
+		"name": "小胖子",
+		"radius": BASIC_ENEMY_RADIUS * 1.2,
+		"max_hp": 3,
+		"damage": 2,
+		"speed": BASIC_ENEMY_SPEED * 0.8,
+		"score_value": 2,
+		"body_color": Color(0.80, 0.34, 0.95, 1.0),
+		"outline_color": Color(0.96, 0.75, 1.0, 1.0),
+	},
 }
-const ENEMY_SPAWN_INTERVAL := 0.85
+const SPAWN_STRATEGY := [
+	{
+		"start_time": 0.0,
+		"rates": {
+			"basic": 20.0,
+		},
+	},
+	{
+		"start_time": 60.0,
+		"rates": {
+			"basic": 40.0,
+		},
+	},
+	{
+		"start_time": 120.0,
+		"rates": {
+			"basic": 40.0,
+			"chubby": 10.0,
+		},
+	},
+]
 const ENEMY_SPAWN_MARGIN := 140.0
 const MAX_ENEMIES := 120
 
@@ -29,18 +66,19 @@ var weapons_layer: Node2D
 var ui_layer: CanvasLayer
 var score_label: Label
 var game_over_label: Label
-var spawn_timer: Timer
 var score := 0
 var is_game_over := false
+var elapsed_seconds := 0.0
+var _spawn_budgets := {}
 
 
 func _ready() -> void:
 	randomize()
+	_init_spawn_budgets()
 	_build_world()
 	_spawn_player()
 	_spawn_weapons()
 	_build_ui()
-	_build_spawn_timer()
 	_update_score_label()
 
 
@@ -53,9 +91,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		_set_player_target(get_canvas_transform().affine_inverse() * event.position)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if is_game_over:
+		return
+	elapsed_seconds += delta
 	if camera != null and player != null:
 		camera.global_position = _clamp_to_map(player.global_position)
+	_update_enemy_spawns(delta)
 
 
 func _build_world() -> void:
@@ -157,20 +199,39 @@ func _build_ui() -> void:
 	ui_layer.add_child(game_over_label)
 
 
-func _build_spawn_timer() -> void:
-	spawn_timer = Timer.new()
-	spawn_timer.name = "EnemySpawnTimer"
-	spawn_timer.wait_time = ENEMY_SPAWN_INTERVAL
-	spawn_timer.autostart = true
-	spawn_timer.timeout.connect(_spawn_enemy)
-	add_child(spawn_timer)
+func _init_spawn_budgets() -> void:
+	for enemy_type in ENEMY_CONFIGS.keys():
+		_spawn_budgets[enemy_type] = 0.0
 
 
-func _spawn_enemy() -> void:
+func _update_enemy_spawns(delta: float) -> void:
+	if player == null or enemies_layer == null or enemies_layer.get_child_count() >= MAX_ENEMIES:
+		return
+	var rates := _get_current_spawn_rates()
+	for enemy_type in rates.keys():
+		if not ENEMY_CONFIGS.has(enemy_type):
+			continue
+		_spawn_budgets[enemy_type] = float(_spawn_budgets.get(enemy_type, 0.0)) + float(rates[enemy_type]) / 60.0 * delta
+		while _spawn_budgets[enemy_type] >= 1.0 and enemies_layer.get_child_count() < MAX_ENEMIES:
+			_spawn_enemy(enemy_type)
+			_spawn_budgets[enemy_type] -= 1.0
+
+
+func _get_current_spawn_rates() -> Dictionary:
+	var current_rates := {}
+	for phase in SPAWN_STRATEGY:
+		if elapsed_seconds >= float(phase["start_time"]):
+			current_rates = phase["rates"]
+		else:
+			break
+	return current_rates
+
+
+func _spawn_enemy(enemy_type: String) -> void:
 	if is_game_over or player == null or enemies_layer.get_child_count() >= MAX_ENEMIES:
 		return
 	var enemy := EnemyScene.new()
-	enemy.apply_config(ENEMY_CONFIG)
+	enemy.apply_config(ENEMY_CONFIGS[enemy_type])
 	enemy.global_position = _get_spawn_position_near_view()
 	enemy.target = player
 	enemy.died.connect(_on_enemy_died)
@@ -224,11 +285,10 @@ func _update_score_label() -> void:
 func _on_player_died() -> void:
 	is_game_over = true
 	game_over_label.visible = true
-	if spawn_timer != null:
-		spawn_timer.stop()
 	get_tree().call_group("enemy", "set_process", false)
 	get_tree().call_group("projectile", "queue_free")
 	get_tree().call_group("weapon", "set_process", false)
+
 
 class MapBackground:
 	extends Node2D
@@ -237,6 +297,7 @@ class MapBackground:
 
 	func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, map_size), Color(0.07, 0.09, 0.10, 1.0), true)
+
 
 class MapGrid:
 	extends Node2D
