@@ -2,34 +2,5 @@
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 
-[node name="Main" type="Control"]
-layout_mode = 3
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="Main" type="Node2D"]
 script = ExtResource("1_main")
-
-[node name="Center" type="CenterContainer" parent="."]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-
-[node name="VBox" type="VBoxContainer" parent="Center"]
-layout_mode = 2
-theme_override_constants/separation = 24
-
-[node name="ColorBox" type="ColorRect" parent="Center/VBox"]
-custom_minimum_size = Vector2(320, 180)
-layout_mode = 2
-color = Color(1, 0, 0, 1)
-
-[node name="ClickButton" type="Button" parent="Center/VBox"]
-custom_minimum_size = Vector2(260, 88)
-layout_mode = 2
-theme_override_font_sizes/font_size = 36
-text = "Click"
