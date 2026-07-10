@@ -1,0 +1,7 @@
+interface:
+  display_name: "Git Version Workflow"
+  short_description: "Safe reset, commit, and push workflows"
+  default_prompt: "Use $git-version-workflow to reset this branch to the remote latest or publish local changes."
+
+policy:
+  allow_implicit_invocation: true
