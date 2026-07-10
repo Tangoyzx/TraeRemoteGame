@@ -23,14 +23,13 @@ grow_vertical = 2
 layout_mode = 2
 theme_override_constants/separation = 24
 
-[node name="MessageLabel" type="Label" parent="Center/VBox"]
+[node name="ColorBox" type="ColorRect" parent="Center/VBox"]
+custom_minimum_size = Vector2(320, 180)
 layout_mode = 2
-theme_override_font_sizes/font_size = 64
-text = "欢迎"
-horizontal_alignment = 1
+color = Color(1, 0, 0, 1)
 
 [node name="ClickButton" type="Button" parent="Center/VBox"]
 custom_minimum_size = Vector2(260, 88)
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
-text = "点击按钮"
+text = "Click"
