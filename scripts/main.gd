@@ -10,7 +10,11 @@ const UpgradeUIFont := preload("uid://cay4nii3rtu3d")
 const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
 const MAP_SIZE := Vector2(12800.0, 7200.0)
 const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
-const SCORE_PER_LEVEL := 200
+# 各等级升级所需累计积分(下标 = 等级 - 1)。超出此列表的等级不再触发升级。
+const LEVEL_REQUIRED_SCORES := [0, 50, 200, 99999]
+# 游戏版本号,显示在屏幕顶部居中。
+# 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
+const GAME_VERSION := "v1.0.0"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -102,6 +106,7 @@ var weapons_layer: Node2D
 var ui_layer: CanvasLayer
 var score_label: Label
 var level_label: Label
+var version_label: Label
 var game_over_label: Label
 var level_up_overlay: ColorRect
 var level_up_title: Label
@@ -229,6 +234,17 @@ func _build_ui() -> void:
 	level_label.position = Vector2(24, 60)
 	level_label.add_theme_font_size_override("font_size", 28)
 	ui_layer.add_child(level_label)
+
+	version_label = Label.new()
+	version_label.name = "VersionLabel"
+	version_label.text = GAME_VERSION
+	version_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	version_label.offset_top = 14.0
+	version_label.offset_bottom = 44.0
+	version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	version_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	version_label.add_theme_font_size_override("font_size", 20)
+	ui_layer.add_child(version_label)
 
 	game_over_label = Label.new()
 	game_over_label.name = "GameOverLabel"
@@ -380,7 +396,9 @@ func _check_level_up() -> void:
 	if is_game_over or is_level_up_open:
 		return
 	var next_level := current_level + 1
-	var required_score := (next_level - 1) * SCORE_PER_LEVEL
+	if next_level > LEVEL_REQUIRED_SCORES.size():
+		return  # 超出已配置的等级数,不再触发升级
+	var required_score: int = int(LEVEL_REQUIRED_SCORES[next_level - 1])
 	if score >= required_score:
 		_show_level_up_options(next_level)
 

@@ -206,7 +206,7 @@ effective(stat, stacks) = base(stat) / (1 + dr(stat) * (stacks - 1))
 - [x] AutoShooter `apply_stat` + `_recompute`:[scripts/weapons/auto_shooter.gd](../scripts/weapons/auto_shooter.gd) — 7 个 stat 全部映射
 - [x] OrbitSword `apply_stat` + `_recompute`:[scripts/weapons/orbit_sword.gd](../scripts/weapons/orbit_sword.gd) — SPEED/DURATION 折叠、多剑管理(`SwordBlade` 内部类)
 - [x] 升级池加权随机 + 3 选 1:`main.gd` 的 `stat_upgrade_defs` / `_build_stat_pool` / `_pick_weighted`
-- [x] 200 积分/级:`main.gd` 的 `SCORE_PER_LEVEL`,`_check_level_up` 用 `(level-1)*200` 公式
+- [x] 自定义升级积分阈值:`main.gd` 的 `LEVEL_REQUIRED_SCORES = [0, 50, 200, 99999]`,Level 1 固定武器二选一、Level 2+ stat 升级
 - [x] Level 1 武器解锁 / Level 2+ stat 升级:`_show_level_up_options` 分级,`_apply_upgrade`(解锁)与 `_apply_stat_upgrade`(堆叠)分离
 - [x] AutoShooter COUNT 多目标:`_find_nearest_enemies(count)` 取最近 K 个不同敌人各射 1 弹
 - [x] OrbitSword COUNT 多剑:角度偏移 `i * TAU / N` 均匀分布
