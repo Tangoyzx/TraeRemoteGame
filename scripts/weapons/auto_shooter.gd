@@ -1,7 +1,7 @@
 class_name AutoShooter
 extends Node
 
-const FIRE_INTERVAL := 0.55
+const FIRE_INTERVAL := 1.10
 const PROJECTILE_SPEED := 520.0
 const PROJECTILE_DAMAGE := 1
 const MUZZLE_OFFSET := 28.0

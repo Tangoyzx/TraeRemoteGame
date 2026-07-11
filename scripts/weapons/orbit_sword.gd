@@ -2,7 +2,7 @@ class_name OrbitSword
 extends Area2D
 
 const DAMAGE := 1
-const ORBIT_RADIUS := 62.0
+const ORBIT_RADIUS := 186.0
 const ORBIT_SPEED := 3.4
 const SIZE := Vector2(52.0, 12.0)
 const HIT_COOLDOWN_SECONDS := 0.45

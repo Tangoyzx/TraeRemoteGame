@@ -5,6 +5,7 @@ const EnemyScene := preload("res://scripts/enemy.gd")
 const ProjectileScene := preload("res://scripts/projectile.gd")
 const AutoShooterScene := preload("res://scripts/weapons/auto_shooter.gd")
 const OrbitSwordScene := preload("res://scripts/weapons/orbit_sword.gd")
+const UpgradeUIFont := preload("uid://cay4nii3rtu3d")
 
 const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
 const MAP_SIZE := Vector2(12800.0, 7200.0)
@@ -43,13 +44,20 @@ const SPAWN_STRATEGY := [
 		},
 	},
 	{
-		"start_time": 60.0,
+		"start_time": 20.0,
 		"rates": {
 			"basic": 40.0,
 		},
 	},
 	{
-		"start_time": 120.0,
+		"start_time": 40.0,
+		"rates": {
+			"basic": 40.0,
+			"chubby": 10.0,
+		},
+	},
+	{
+		"start_time": 60.0,
 		"rates": {
 			"basic": 40.0,
 			"chubby": 10.0,
@@ -59,15 +67,15 @@ const SPAWN_STRATEGY := [
 const UPGRADE_OPTIONS := {
 	"auto_shooter": {
 		"id": "auto_shooter",
-		"title": "Bullet",
-		"description": "Auto fires at the nearest enemy.",
+		"title": "子弹",
+		"description": "自动瞄准最近敌人发射子弹",
 		"image_path": "res://assets/upgrades/bullet.svg",
 		"weapon_type": "auto_shooter",
 	},
 	"orbit_sword": {
 		"id": "orbit_sword",
-		"title": "Orbit Sword",
-		"description": "A permanent sword orbits the player.",
+		"title": "环绕剑",
+		"description": "围绕角色旋转并持续伤害敌人",
 		"image_path": "res://assets/upgrades/orbit_sword.svg",
 		"weapon_type": "orbit_sword",
 	},
@@ -260,8 +268,9 @@ func _build_level_up_ui() -> void:
 
 	level_up_title = Label.new()
 	level_up_title.name = "Title"
-	level_up_title.text = "Level Up! Choose one upgrade"
+	level_up_title.text = "升级！选择一个强化"
 	level_up_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	level_up_title.add_theme_font_override("font", UpgradeUIFont)
 	level_up_title.add_theme_font_size_override("font_size", 34)
 	content.add_child(level_up_title)
 
@@ -381,7 +390,7 @@ func _get_level_config(level: int) -> Dictionary:
 
 func _show_level_up_options(level: int, option_ids: Array) -> void:
 	is_level_up_open = true
-	level_up_title.text = "Level %d - Choose one upgrade" % level
+	level_up_title.text = "等级 %d - 选择一个强化" % level
 	for child in level_up_options_box.get_children():
 		child.queue_free()
 	for option_id in option_ids:
@@ -405,6 +414,7 @@ func _create_upgrade_card(option_id: String) -> Control:
 	title.text = str(option["title"])
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.add_theme_font_override("font", UpgradeUIFont)
 	title.add_theme_font_size_override("font_size", 24)
 	card.add_child(title)
 
@@ -423,6 +433,7 @@ func _create_upgrade_card(option_id: String) -> Control:
 	description.custom_minimum_size = Vector2(170, 0)
 	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.add_theme_font_override("font", UpgradeUIFont)
 	description.add_theme_font_size_override("font_size", 16)
 	card.add_child(description)
 
