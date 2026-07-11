@@ -10,7 +10,7 @@ const UpgradeUIFont := preload("uid://cay4nii3rtu3d")
 const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
 const MAP_SIZE := Vector2(12800.0, 7200.0)
 const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
-const DEFAULT_LEVEL_REQUIRED_SCORE := 99999999
+const SCORE_PER_LEVEL := 200
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -80,12 +80,16 @@ const UPGRADE_OPTIONS := {
 		"weapon_type": "orbit_sword",
 	},
 }
-const LEVEL_CONFIGS := {
-	1: {
-		"required_score": 0,
-		"options": ["auto_shooter", "orbit_sword"],
-	},
-}
+# 通用 stat 升级定义。weight 控制加权随机投放(详见 docs/skill-system-framework.md §8)。
+var stat_upgrade_defs := [
+	{"id": "stat_frequency", "stat": StatMath.Stat.FREQUENCY, "title": "频率", "desc": "减少子弹冷却 / 加快剑的旋转", "weight": 100},
+	{"id": "stat_damage", "stat": StatMath.Stat.DAMAGE, "title": "伤害", "desc": "提升每次命中伤害", "weight": 100},
+	{"id": "stat_area", "stat": StatMath.Stat.AREA, "title": "范围", "desc": "增大子弹与剑的尺寸/半径", "weight": 60},
+	{"id": "stat_duration", "stat": StatMath.Stat.DURATION, "title": "持续", "desc": "延长子弹寿命 / 加长剑身", "weight": 60},
+	{"id": "stat_speed", "stat": StatMath.Stat.SPEED, "title": "速度", "desc": "提升弹速 / 加快剑的旋转", "weight": 60},
+	{"id": "stat_count", "stat": StatMath.Stat.COUNT, "title": "数量", "desc": "+1 子弹(多瞄一敌) / +1 剑", "weight": 35},
+	{"id": "stat_pierce", "stat": StatMath.Stat.PIERCE, "title": "穿透", "desc": "子弹穿透更多敌 / 剑命中冷却↓", "weight": 35},
+]
 const ENEMY_SPAWN_MARGIN := 140.0
 const MAX_ENEMIES := 120
 
@@ -109,6 +113,8 @@ var is_level_up_open := false
 var elapsed_seconds := 0.0
 var _spawn_budgets := {}
 var _acquired_upgrades := {}
+var _stat_stacks := {}
+var _unlocked_weapons := []
 
 
 func _ready() -> void:
@@ -374,34 +380,61 @@ func _check_level_up() -> void:
 	if is_game_over or is_level_up_open:
 		return
 	var next_level := current_level + 1
-	var level_config := _get_level_config(next_level)
-	var required_score := int(level_config.get("required_score", DEFAULT_LEVEL_REQUIRED_SCORE))
-	var options: Array = level_config.get("options", [])
-	if score >= required_score and not options.is_empty():
-		_show_level_up_options(next_level, options)
+	var required_score := (next_level - 1) * SCORE_PER_LEVEL
+	if score >= required_score:
+		_show_level_up_options(next_level)
 
 
-func _get_level_config(level: int) -> Dictionary:
-	return LEVEL_CONFIGS.get(level, {
-		"required_score": DEFAULT_LEVEL_REQUIRED_SCORE,
-		"options": [],
-	})
-
-
-func _show_level_up_options(level: int, option_ids: Array) -> void:
+func _show_level_up_options(level: int) -> void:
 	is_level_up_open = true
 	level_up_title.text = "等级 %d - 选择一个强化" % level
 	for child in level_up_options_box.get_children():
 		child.queue_free()
-	for option_id in option_ids:
-		if not UPGRADE_OPTIONS.has(option_id):
-			continue
-		level_up_options_box.add_child(_create_upgrade_card(option_id))
+	if level == 1:
+		# 首次升级:选择初始武器。
+		for option_id in ["auto_shooter", "orbit_sword"]:
+			level_up_options_box.add_child(_create_weapon_card(option_id))
+	else:
+		# 后续升级:从已解锁武器可用的 stat 池中加权随机抽 3 个。
+		var pool := _build_stat_pool()
+		for def in _pick_weighted(pool, 3):
+			level_up_options_box.add_child(_create_stat_card(def))
 	level_up_overlay.visible = true
 	get_tree().paused = true
 
 
-func _create_upgrade_card(option_id: String) -> Control:
+# 可投放的 stat 池:排除已堆满(MAX_STACKS)的属性。
+func _build_stat_pool() -> Array:
+	var pool := []
+	for def in stat_upgrade_defs:
+		var stat: int = int(def["stat"])
+		if int(_stat_stacks.get(stat, 0)) < StatMath.MAX_STACKS:
+			pool.append(def)
+	return pool
+
+
+# 从 pool 中按 weight 加权随机抽 n 个互不相同的项。
+func _pick_weighted(pool: Array, n: int) -> Array:
+	var result := []
+	var working := pool.duplicate()
+	while result.size() < n and not working.is_empty():
+		var total_weight := 0.0
+		for def in working:
+			total_weight += float(def["weight"])
+		var roll := randf() * total_weight
+		var acc := 0.0
+		var chosen := 0
+		for i in working.size():
+			acc += float(working[i]["weight"])
+			if roll <= acc:
+				chosen = i
+				break
+		result.append(working[chosen])
+		working.remove_at(chosen)
+	return result
+
+
+func _create_weapon_card(option_id: String) -> Control:
 	var option: Dictionary = UPGRADE_OPTIONS[option_id]
 	var card := VBoxContainer.new()
 	card.name = "Upgrade_%s" % str(option.get("id", option_id))
@@ -440,8 +473,57 @@ func _create_upgrade_card(option_id: String) -> Control:
 	return card
 
 
+func _create_stat_card(def: Dictionary) -> Control:
+	var stat: int = int(def["stat"])
+	var current_stacks: int = int(_stat_stacks.get(stat, 0))
+	var card := VBoxContainer.new()
+	card.name = "Stat_%s" % str(def["id"])
+	card.custom_minimum_size = Vector2(180, 300)
+	card.alignment = BoxContainer.ALIGNMENT_CENTER
+	card.add_theme_constant_override("separation", 8)
+	card.process_mode = Node.PROCESS_MODE_ALWAYS
+
+	var title := Label.new()
+	title.text = "%s  Lv.%d → Lv.%d" % [str(def["title"]), current_stacks, current_stacks + 1]
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.add_theme_font_override("font", UpgradeUIFont)
+	title.add_theme_font_size_override("font_size", 22)
+	card.add_child(title)
+
+	var button := Button.new()
+	button.name = "SelectButton"
+	button.custom_minimum_size = Vector2(120, 120)
+	button.text = str(def["title"])
+	button.add_theme_font_override("font", UpgradeUIFont)
+	button.add_theme_font_size_override("font_size", 34)
+	button.process_mode = Node.PROCESS_MODE_ALWAYS
+	button.pressed.connect(_choose_stat.bind(stat))
+	card.add_child(button)
+
+	var description := Label.new()
+	description.text = str(def["desc"])
+	description.custom_minimum_size = Vector2(170, 0)
+	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.add_theme_font_override("font", UpgradeUIFont)
+	description.add_theme_font_size_override("font_size", 16)
+	card.add_child(description)
+
+	return card
+
+
 func _choose_upgrade(option_id: String) -> void:
 	_apply_upgrade(option_id)
+	_finish_level_up()
+
+
+func _choose_stat(stat: int) -> void:
+	_apply_stat_upgrade(stat)
+	_finish_level_up()
+
+
+func _finish_level_up() -> void:
 	current_level += 1
 	_update_level_label()
 	level_up_overlay.visible = false
@@ -462,11 +544,22 @@ func _apply_upgrade(option_id: String) -> void:
 			_create_orbit_sword()
 
 
+# 通用 stat 升级:堆叠数 +1,并同步给所有已解锁武器。
+func _apply_stat_upgrade(stat: int) -> void:
+	_stat_stacks[stat] = int(_stat_stacks.get(stat, 0)) + 1
+	var stacks: int = int(_stat_stacks[stat])
+	for weapon in _unlocked_weapons:
+		if is_instance_valid(weapon):
+			weapon.apply_stat(stat, stacks)
+
+
 func _create_auto_shooter() -> void:
 	var auto_shooter := AutoShooterScene.new()
 	auto_shooter.name = "AutoShooter"
 	auto_shooter.setup(player, enemies_layer, projectiles_layer, ProjectileScene)
 	weapons_layer.add_child(auto_shooter)
+	_unlocked_weapons.append(auto_shooter)
+	_sync_weapon_stats(auto_shooter)
 
 
 func _create_orbit_sword() -> void:
@@ -474,6 +567,14 @@ func _create_orbit_sword() -> void:
 	orbit_sword.name = "OrbitSword"
 	orbit_sword.setup(player)
 	weapons_layer.add_child(orbit_sword)
+	_unlocked_weapons.append(orbit_sword)
+	_sync_weapon_stats(orbit_sword)
+
+
+# 新武器解锁时,把当前已累积的 stat 堆叠同步过去(支持后续多武器共存)。
+func _sync_weapon_stats(weapon: Node) -> void:
+	for stat in _stat_stacks.keys():
+		weapon.apply_stat(int(stat), int(_stat_stacks[stat]))
 
 
 func _on_player_died() -> void:

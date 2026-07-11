@@ -198,18 +198,26 @@ effective(stat, stacks) = base(stat) / (1 + dr(stat) * (stacks - 1))
 
 5 层 FREQUENCY 累积 +46% DPS,仍在合理范围(约 2 个普通升级的量)。COUNT ×5 的 6 倍是预期的"高投入高回报",靠稀有度让其难凑齐。
 
-## 11. 与现状的差距 / 后续待办
+## 11. 落地状态
 
-当前 [main.gd](../scripts/main.gd) 的升级系统**只做武器解锁**,无 stat 升级层。落地本框架需要:
+框架已落地到代码。各组件实现位置:
 
-- [ ] 在武器基类加 `apply_stat(stat, stacks)` 接口,AutoShooter / OrbitSword 各实现一份
-- [ ] 实现 `StatMath.effective_magnitude(stat, stacks)`(§7 曲线)
-- [ ] 在 `main.gd` 的 `UPGRADE_OPTIONS` 增加 stat 类升级,Level 2+ 投放
-- [ ] 升级池按 §8 权重加权随机
-- [ ] `_apply_upgrade` 支持"已解锁武器 + stat 升级"分支,区分解锁与堆叠
-- [ ] AutoShooter 的 COUNT 需改 `_fire_at` 为"取最近 K 个敌,各射 1 弹"
-- [ ] OrbitSword 的 COUNT 需支持多剑均匀分布(角度偏移 2π/N)
-- [ ] OrbitSword 的 SPEED/DURATION 实现折叠逻辑
-- [ ] UI 上 stat 升级卡显示"对当前已解锁武器的具体效果"(解决"同一描述不同反馈"的可读性)
+- [x] `StatMath` 工具类:[scripts/stat_math.gd](../scripts/stat_math.gd) — 枚举、`total_multiplier(stat, stacks)`(§7 DR 曲线)、`MAX_STACKS`
+- [x] AutoShooter `apply_stat` + `_recompute`:[scripts/weapons/auto_shooter.gd](../scripts/weapons/auto_shooter.gd) — 7 个 stat 全部映射
+- [x] OrbitSword `apply_stat` + `_recompute`:[scripts/weapons/orbit_sword.gd](../scripts/weapons/orbit_sword.gd) — SPEED/DURATION 折叠、多剑管理(`SwordBlade` 内部类)
+- [x] 升级池加权随机 + 3 选 1:`main.gd` 的 `stat_upgrade_defs` / `_build_stat_pool` / `_pick_weighted`
+- [x] 200 积分/级:`main.gd` 的 `SCORE_PER_LEVEL`,`_check_level_up` 用 `(level-1)*200` 公式
+- [x] Level 1 武器解锁 / Level 2+ stat 升级:`_show_level_up_options` 分级,`_apply_upgrade`(解锁)与 `_apply_stat_upgrade`(堆叠)分离
+- [x] AutoShooter COUNT 多目标:`_find_nearest_enemies(count)` 取最近 K 个不同敌人各射 1 弹
+- [x] OrbitSword COUNT 多剑:角度偏移 `i * TAU / N` 均匀分布
+- [x] OrbitSword SPEED→FREQUENCY、DURATION→AREA 折叠:见 `_recompute`
+- [x] Projectile 支持可变 radius/lifetime/伤害/穿透:[scripts/projectile.gd](../scripts/projectile.gd)
+- [x] Enemy hp 改 float 以支持小数伤害:[scripts/enemy.gd](../scripts/enemy.gd)
 
-> 本文档只完成**设计校准**,不含代码实现。代码实现按上述待办推进,每改一个常量需回本文档同步数值。
+### 已知简化 / 后续可扩展
+
+- stat 升级卡当前只显示通用标题 + Lv.+ 描述,未逐武器展示具体数值变化(§11 末项的"可读性"待办:可在卡上列出"子弹: 冷却 1.10→0.96s / 剑: 转速 3.4→3.88")。
+- Level 2+ 仅投放 stat 升级,第二把武器暂不出现在升级池(当前只能 Level 1 二选一)。若要支持后续解锁第二武器,把 `_create_weapon_card` 的选项加入 `_build_stat_pool` 即可。
+- `apply_stat(stat, stacks)` 传的是**绝对堆叠数**(main 为唯一真相源),新武器解锁时由 `_sync_weapon_stats` 同步全部已累积堆叠,已支持多武器共存。
+
+> 本文档为设计校准基准。代码常量改动后需回本文 §2 同步数值;适配系数 `k` 改动需回 §5 同步。

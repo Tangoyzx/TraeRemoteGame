@@ -24,7 +24,7 @@ func _ready() -> void:
 func apply_config(config: Dictionary) -> void:
 	enemy_name = str(config.get("name", enemy_name))
 	radius = float(config.get("radius", radius))
-	max_hp = int(config.get("max_hp", max_hp))
+	max_hp = float(config.get("max_hp", max_hp))
 	hp = max_hp
 	damage = int(config.get("damage", damage))
 	speed = float(config.get("speed", speed))
@@ -41,11 +41,11 @@ func _process(delta: float) -> void:
 		global_position += offset.normalized() * speed * delta
 
 
-func take_damage(amount: int) -> void:
-	if amount <= 0 or hp <= 0:
+func take_damage(amount: float) -> void:
+	if amount <= 0.0 or hp <= 0.0:
 		return
 	hp -= amount
-	if hp <= 0:
+	if hp <= 0.0:
 		died.emit(self)
 		queue_free()
 
