@@ -10,6 +10,7 @@ const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
 const MAP_SIZE := Vector2(12800.0, 7200.0)
 const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 const DEFAULT_LEVEL_REQUIRED_SCORE := 99999999
+const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
 const ENEMY_CONFIGS := {
@@ -57,13 +58,17 @@ const SPAWN_STRATEGY := [
 ]
 const UPGRADE_OPTIONS := {
 	"auto_shooter": {
+		"id": "auto_shooter",
 		"title": "Bullet",
 		"description": "Auto fires at the nearest enemy.",
+		"image_path": "res://assets/upgrades/bullet.svg",
 		"weapon_type": "auto_shooter",
 	},
 	"orbit_sword": {
+		"id": "orbit_sword",
 		"title": "Orbit Sword",
 		"description": "A permanent sword orbits the player.",
+		"image_path": "res://assets/upgrades/orbit_sword.svg",
 		"weapon_type": "orbit_sword",
 	},
 }
@@ -88,7 +93,7 @@ var level_label: Label
 var game_over_label: Label
 var level_up_overlay: ColorRect
 var level_up_title: Label
-var level_up_buttons_box: VBoxContainer
+var level_up_options_box: HBoxContainer
 var score := 0
 var current_level := 0
 var is_game_over := false
@@ -242,7 +247,7 @@ func _build_level_up_ui() -> void:
 
 	var panel := PanelContainer.new()
 	panel.name = "Panel"
-	panel.custom_minimum_size = Vector2(560, 320)
+	panel.custom_minimum_size = Vector2(720, 390)
 	panel.process_mode = Node.PROCESS_MODE_ALWAYS
 	center.add_child(panel)
 
@@ -260,12 +265,12 @@ func _build_level_up_ui() -> void:
 	level_up_title.add_theme_font_size_override("font_size", 34)
 	content.add_child(level_up_title)
 
-	level_up_buttons_box = VBoxContainer.new()
-	level_up_buttons_box.name = "Options"
-	level_up_buttons_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	level_up_buttons_box.add_theme_constant_override("separation", 12)
-	level_up_buttons_box.process_mode = Node.PROCESS_MODE_ALWAYS
-	content.add_child(level_up_buttons_box)
+	level_up_options_box = HBoxContainer.new()
+	level_up_options_box.name = "Options"
+	level_up_options_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	level_up_options_box.add_theme_constant_override("separation", 28)
+	level_up_options_box.process_mode = Node.PROCESS_MODE_ALWAYS
+	content.add_child(level_up_options_box)
 
 
 func _init_spawn_budgets() -> void:
@@ -377,26 +382,51 @@ func _get_level_config(level: int) -> Dictionary:
 func _show_level_up_options(level: int, option_ids: Array) -> void:
 	is_level_up_open = true
 	level_up_title.text = "Level %d - Choose one upgrade" % level
-	for child in level_up_buttons_box.get_children():
+	for child in level_up_options_box.get_children():
 		child.queue_free()
 	for option_id in option_ids:
 		if not UPGRADE_OPTIONS.has(option_id):
 			continue
-		level_up_buttons_box.add_child(_create_upgrade_button(option_id))
+		level_up_options_box.add_child(_create_upgrade_card(option_id))
 	level_up_overlay.visible = true
 	get_tree().paused = true
 
 
-func _create_upgrade_button(option_id: String) -> Button:
+func _create_upgrade_card(option_id: String) -> Control:
 	var option: Dictionary = UPGRADE_OPTIONS[option_id]
-	var button := Button.new()
-	button.name = "Upgrade_%s" % option_id
-	button.custom_minimum_size = Vector2(460, 72)
-	button.text = "%s\n%s" % [option["title"], option["description"]]
-	button.add_theme_font_size_override("font_size", 22)
-	button.process_mode = Node.PROCESS_MODE_ALWAYS
-	button.pressed.connect(_choose_upgrade.bind(option_id))
-	return button
+	var card := VBoxContainer.new()
+	card.name = "Upgrade_%s" % str(option.get("id", option_id))
+	card.custom_minimum_size = Vector2(180, 300)
+	card.alignment = BoxContainer.ALIGNMENT_CENTER
+	card.add_theme_constant_override("separation", 8)
+	card.process_mode = Node.PROCESS_MODE_ALWAYS
+
+	var title := Label.new()
+	title.text = str(option["title"])
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.add_theme_font_size_override("font_size", 24)
+	card.add_child(title)
+
+	var image_button := TextureButton.new()
+	image_button.name = "ImageButton"
+	image_button.custom_minimum_size = UPGRADE_IMAGE_SIZE
+	image_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	image_button.ignore_texture_size = true
+	image_button.texture_normal = load(str(option["image_path"]))
+	image_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	image_button.pressed.connect(_choose_upgrade.bind(option_id))
+	card.add_child(image_button)
+
+	var description := Label.new()
+	description.text = str(option["description"])
+	description.custom_minimum_size = Vector2(170, 0)
+	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.add_theme_font_size_override("font_size", 16)
+	card.add_child(description)
+
+	return card
 
 
 func _choose_upgrade(option_id: String) -> void:
