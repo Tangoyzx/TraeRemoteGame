@@ -33,7 +33,9 @@ $GODOT_HEAD_INCLUDE
   // 优先加载预压缩产物 (.wasm.gz)，浏览器端用 DecompressionStream("gzip") 解压。
   // gzip 在所有支持 DecompressionStream 的浏览器里都确定可用（brotli 实现不统一）。
   // 回退链：.wasm.gz 解压 → 失败则直接 fetch .wasm（兼容未预压缩环境）。
-  var BAS = "$GODOT_BASENAME";
+  // 注意：Godot 4.6 自定义 shell 不支持 $GODOT_BASENAME，从 $GODOT_URL（如 "index.js"）推导。
+  var GURL = "$GODOT_URL";
+  var BAS = GURL.replace(/\.js$/, "");
 
   function log(msg) {
     console.log("[load]", msg);
