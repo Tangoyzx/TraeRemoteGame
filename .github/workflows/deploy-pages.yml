@@ -46,6 +46,23 @@ jobs:
           mkdir -p dist
           godot --headless --path . --export-release "Web" "dist/index.html"
 
+      - name: Brotli-precompress large assets
+        run: |
+          # 用 brotli 预压缩 wasm（36MB → ~9MB），自定义 HTML shell 会优先加载 .wasm.br
+          # 同时压缩 index.js 以减小首包
+          set -e
+          cd dist
+          for f in index.wasm index.js; do
+            if [ -f "$f" ]; then
+              brotli -q 11 -c "$f" > "$f.br"
+              echo "$f -> $(du -h "$f.br" | cut -f1)"
+            fi
+          done
+          # 删除原始 wasm：.wasm.br 已满足 EdgeOne 25MB 单文件限制
+          # 保留 index.js 作为 loader（体积小，且 shell 通过 $GODOT_URL 直接引用）
+          rm -f index.wasm
+          ls -lh
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
