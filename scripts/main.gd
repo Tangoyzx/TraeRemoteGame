@@ -5,7 +5,22 @@ const EnemyScene := preload("res://scripts/enemy.gd")
 const ProjectileScene := preload("res://scripts/projectile.gd")
 const AutoShooterScene := preload("res://scripts/weapons/auto_shooter.gd")
 const OrbitSwordScene := preload("res://scripts/weapons/orbit_sword.gd")
-const UpgradeUIFont := preload("uid://cay4nii3rtu3d")
+const UpgradeUIFont := _create_system_font()
+
+
+# 用系统字体渲染 UI 中文,避免在 .pck 内打包中文字体(显著减小首包)。
+# Web 端会回落到浏览器的中文字体栈,不同设备字体外观略有差异但都能正常显示。
+static func _create_system_font() -> SystemFont:
+	var font := SystemFont.new()
+	# 按优先级排列常见中文/通用无衬线字体;缺失的会被自动跳过。
+	font.font_names = PackedStringArray([
+		"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "SimHei",
+		"Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei",
+		"Arial Unicode MS", "sans-serif",
+	])
+	font.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+	font.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_ONE_HALF
+	return font
 
 const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
 const MAP_SIZE := Vector2(12800.0, 7200.0)
@@ -14,7 +29,7 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 const LEVEL_REQUIRED_SCORES := [0, 50, 200, 99999]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.0.4"
+const GAME_VERSION := "v1.0.5"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
