@@ -46,20 +46,15 @@ jobs:
           mkdir -p dist
           godot --headless --path . --export-release "Web" "dist/index.html"
 
-      - name: Brotli-precompress large assets
+      - name: Gzip-precompress large assets
         run: |
-          # 用 brotli 预压缩 wasm（36MB → ~9MB），自定义 HTML shell 会优先加载 .wasm.br
-          # 同时压缩 index.js 以减小首包
+          # 用 gzip 预压缩 wasm（36MB → ~11MB），自定义 HTML shell 用 DecompressionStream("gzip") 解压
+          # gzip 在所有支持 DecompressionStream 的浏览器里都确定可用（brotli 实现不统一）
           set -e
           cd dist
-          for f in index.wasm index.js; do
-            if [ -f "$f" ]; then
-              brotli -q 11 -c "$f" > "$f.br"
-              echo "$f -> $(du -h "$f.br" | cut -f1)"
-            fi
-          done
-          # 删除原始 wasm：.wasm.br 已满足 EdgeOne 25MB 单文件限制
-          # 保留 index.js 作为 loader（体积小，且 shell 通过 $GODOT_URL 直接引用）
+          gzip -9 -k -f index.wasm
+          echo "index.wasm -> $(du -h index.wasm.gz | cut -f1)"
+          # 删除原始 wasm：.wasm.gz 满足 EdgeOne 25MB 单文件限制，回退时再重建
           rm -f index.wasm
           ls -lh
 

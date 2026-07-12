@@ -16,7 +16,7 @@
   #loading h1 { font-size: 18px; font-weight: 500; margin-bottom: 16px; }
   #bar { width: 240px; height: 6px; background: #333; border-radius: 3px; overflow: hidden; }
   #fill { width: 0%; height: 100%; background: #4a9; transition: width 0.2s; }
-  #pct { margin-top: 10px; font-size: 12px; color: #888; }
+  #pct { margin-top: 10px; font-size: 12px; color: #888; word-break: break-all; max-width: 90vw; text-align: center; }
 </style>
 $GODOT_HEAD_INCLUDE
 </head>
@@ -30,35 +30,34 @@ $GODOT_HEAD_INCLUDE
 <script src="$GODOT_URL"></script>
 <script>
 (function () {
-  // 优先加载预压缩产物 (.wasm.br / .js.br)，浏览器端用 DecompressionStream 解压。
-  // 如果预压缩文件不存在（404），回退到普通 .wasm / .js，保证 GitHub Pages 等环境也能跑。
+  // 优先加载预压缩产物 (.wasm.gz)，浏览器端用 DecompressionStream("gzip") 解压。
+  // gzip 在所有支持 DecompressionStream 的浏览器里都确定可用（brotli 实现不统一）。
+  // 回退链：.wasm.gz 解压 → 失败则直接 fetch .wasm（兼容未预压缩环境）。
   var BAS = "$GODOT_BASENAME";
+
+  function log(msg) {
+    console.log("[load]", msg);
+    var el = document.getElementById("pct");
+    if (el) el.textContent = msg;
+  }
 
   function fetchAndDecompress(url) {
     return fetch(url).then(function (r) {
-      if (!r.ok) throw new Error(url + " " + r.status);
-      return r.body.pipeThrough(new DecompressionStream("brotli"));
+      if (!r.ok) throw new Error(url + " HTTP " + r.status);
+      return r.body.pipeThrough(new DecompressionStream("gzip"));
     });
   }
 
-  function toArrayBuffer(stream) {
-    return new Response(stream).arrayBuffer();
-  }
+  var hasDS = typeof DecompressionStream !== "undefined";
 
-  function toText(stream) {
-    return new Response(stream).text();
-  }
-
-  var useBr = typeof DecompressionStream !== "undefined";
-
-  var wasmPromise = useBr
-    ? fetchAndDecompress(BAS + ".wasm.br")
-        .then(toArrayBuffer)
-        .catch(function () { return fetch(BAS + ".wasm").then(function (r) { return r.arrayBuffer(); }); })
+  var wasmPromise = hasDS
+    ? fetchAndDecompress(BAS + ".wasm.gz")
+        .then(function (stream) { return new Response(stream).arrayBuffer(); })
+        .catch(function (e) {
+          log("gzip miss, fallback .wasm");
+          return fetch(BAS + ".wasm").then(function (r) { return r.arrayBuffer(); });
+        })
     : fetch(BAS + ".wasm").then(function (r) { return r.arrayBuffer(); });
-
-  // index.js 必须在 Engine 类可用前就绪：先加载 $GODOT_URL（Godot 生成的 loader），
-  // wasm 通过 preloadFile 传给引擎，这样 loader 内部的 WebAssembly.instantiate 用我们解压好的 buffer。
 
   var config = $GODOT_CONFIG;
   config.canvas = document.getElementById("canvas");
@@ -73,6 +72,7 @@ $GODOT_HEAD_INCLUDE
   var engine = new Engine(config);
 
   wasmPromise.then(function (wasmBuf) {
+    log("wasm ready " + (wasmBuf.byteLength / 1048576).toFixed(1) + "MB");
     engine.preloadFile(wasmBuf, BAS + ".wasm");
     return engine.startGame({ "mainPack": BAS + ".pck" });
   }).then(function () {
@@ -80,8 +80,7 @@ $GODOT_HEAD_INCLUDE
     if (el) el.style.display = "none";
   }).catch(function (err) {
     console.error(err);
-    var el = document.getElementById("pct");
-    if (el) el.textContent = "Load failed: " + (err && err.message ? err.message : err);
+    log("Load failed: " + (err && err.message ? err.message : err));
   });
 })();
 </script>
