@@ -4,7 +4,7 @@ extends Area2D
 const BASE_RADIUS := 6.0
 
 var velocity := Vector2.ZERO
-var damage := 1.0
+var damage := 100.0
 var lifetime := 2.2
 var radius := BASE_RADIUS
 # 命中后仍可继续穿透的敌人数(0 = 命中即销毁)。

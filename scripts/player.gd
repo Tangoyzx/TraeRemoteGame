@@ -4,7 +4,7 @@ extends Area2D
 signal died
 
 const RADIUS := 20.0
-const MAX_HP := 3
+const MAX_HP := 300
 const SPEED := 230.0
 const CONTACT_INVULNERABLE_SECONDS := 2.0
 const FLASH_INTERVAL := 0.1

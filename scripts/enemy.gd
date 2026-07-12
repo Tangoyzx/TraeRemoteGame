@@ -5,9 +5,9 @@ signal died(enemy: Enemy)
 
 var enemy_name := "Basic"
 var radius := 18.0
-var max_hp := 1
-var hp := 1
-var damage := 1
+var max_hp := 100.0
+var hp := 100.0
+var damage := 100
 var speed := 115.0
 var score_value := 1
 var body_color := Color(0.92, 0.20, 0.20, 1.0)

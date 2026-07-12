@@ -2,7 +2,7 @@ class_name OrbitSword
 extends Node2D
 
 # 基线参数(随升级变化,参见 docs/skill-calibration.md §2)。
-const BASE_DAMAGE := 1.0
+const BASE_DAMAGE := 100.0
 const BASE_ORBIT_RADIUS := 186.0
 const BASE_ORBIT_SPEED := 3.4
 const BASE_SIZE := Vector2(52.0, 12.0)
@@ -120,7 +120,7 @@ class SwordBlade:
 	extends Area2D
 
 	var size := Vector2(52.0, 12.0)
-	var damage := 1.0
+	var damage := 100.0
 	var hit_cooldown := 0.45
 	var _hit_cooldowns := {}
 	var _shape: RectangleShape2D

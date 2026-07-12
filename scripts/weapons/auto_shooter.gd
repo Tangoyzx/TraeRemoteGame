@@ -4,7 +4,7 @@ extends Node
 # 基线参数(随升级变化,参见 docs/skill-calibration.md §2)。
 const BASE_FIRE_INTERVAL := 1.10
 const BASE_PROJECTILE_SPEED := 520.0
-const BASE_PROJECTILE_DAMAGE := 1.0
+const BASE_PROJECTILE_DAMAGE := 100.0
 const BASE_PROJECTILE_RADIUS := 6.0
 const BASE_PROJECTILE_LIFETIME := 2.2
 const MUZZLE_OFFSET := 28.0
