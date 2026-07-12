@@ -6,13 +6,15 @@ signal died
 const RADIUS := 20.0
 const MAX_HP := 3
 const SPEED := 230.0
-const CONTACT_INVULNERABLE_SECONDS := 0.8
+const CONTACT_INVULNERABLE_SECONDS := 2.0
+const FLASH_INTERVAL := 0.1
 
 var map_rect := Rect2(Vector2.ZERO, Vector2(12800.0, 7200.0))
 var hp := MAX_HP
 var move_target := Vector2.ZERO
 var has_move_target := false
 var _damage_cooldown := 0.0
+var _flash_timer := 0.0
 var _hp_label: Label
 
 
@@ -28,6 +30,12 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _damage_cooldown > 0.0:
 		_damage_cooldown -= delta
+		_flash_timer -= delta
+		if _flash_timer <= 0.0:
+			_flash_timer = FLASH_INTERVAL
+			visible = not visible
+		if _damage_cooldown <= 0.0:
+			visible = true
 	if has_move_target:
 		_move_toward_target(delta)
 	_damage_overlapping_enemies()
