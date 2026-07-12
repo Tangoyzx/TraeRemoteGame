@@ -3,7 +3,7 @@ extends Area2D
 
 signal died(enemy: Enemy)
 
-var enemy_name := "初级怪"
+var enemy_name := "Basic"
 var radius := 18.0
 var max_hp := 1
 var hp := 1

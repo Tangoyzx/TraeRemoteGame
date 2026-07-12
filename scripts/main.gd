@@ -5,22 +5,6 @@ const EnemyScene := preload("res://scripts/enemy.gd")
 const ProjectileScene := preload("res://scripts/projectile.gd")
 const AutoShooterScene := preload("res://scripts/weapons/auto_shooter.gd")
 const OrbitSwordScene := preload("res://scripts/weapons/orbit_sword.gd")
-const UpgradeUIFont := _create_system_font()
-
-
-# 用系统字体渲染 UI 中文,避免在 .pck 内打包中文字体(显著减小首包)。
-# Web 端会回落到浏览器的中文字体栈,不同设备字体外观略有差异但都能正常显示。
-static func _create_system_font() -> SystemFont:
-	var font := SystemFont.new()
-	# 按优先级排列常见中文/通用无衬线字体;缺失的会被自动跳过。
-	font.font_names = PackedStringArray([
-		"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "SimHei",
-		"Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei",
-		"Arial Unicode MS", "sans-serif",
-	])
-	font.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
-	font.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_ONE_HALF
-	return font
 
 const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
 const MAP_SIZE := Vector2(12800.0, 7200.0)
@@ -29,13 +13,13 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 const LEVEL_REQUIRED_SCORES := [0, 50, 200, 99999]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.0.5"
+const GAME_VERSION := "v1.0.6"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
 const ENEMY_CONFIGS := {
 	"basic": {
-		"name": "初级怪",
+		"name": "Basic",
 		"radius": BASIC_ENEMY_RADIUS,
 		"max_hp": 1,
 		"damage": 1,
@@ -45,7 +29,7 @@ const ENEMY_CONFIGS := {
 		"outline_color": Color(1.0, 0.68, 0.68, 1.0),
 	},
 	"chubby": {
-		"name": "小胖子",
+		"name": "Chubby",
 		"radius": BASIC_ENEMY_RADIUS * 1.2,
 		"max_hp": 3,
 		"damage": 2,
@@ -86,28 +70,28 @@ const SPAWN_STRATEGY := [
 const UPGRADE_OPTIONS := {
 	"auto_shooter": {
 		"id": "auto_shooter",
-		"title": "子弹",
-		"description": "自动瞄准最近敌人发射子弹",
+		"title": "Bullet",
+		"description": "Auto-targets nearest enemy",
 		"image_path": "res://assets/upgrades/bullet.svg",
 		"weapon_type": "auto_shooter",
 	},
 	"orbit_sword": {
 		"id": "orbit_sword",
-		"title": "环绕剑",
-		"description": "围绕角色旋转并持续伤害敌人",
+		"title": "Orbit Sword",
+		"description": "Orbits player, damages enemies",
 		"image_path": "res://assets/upgrades/orbit_sword.svg",
 		"weapon_type": "orbit_sword",
 	},
 }
 # 通用 stat 升级定义。weight 控制加权随机投放(详见 docs/skill-system-framework.md §8)。
 var stat_upgrade_defs := [
-	{"id": "stat_frequency", "stat": StatMath.Stat.FREQUENCY, "title": "频率", "desc": "减少子弹冷却 / 加快剑的旋转", "weight": 100},
-	{"id": "stat_damage", "stat": StatMath.Stat.DAMAGE, "title": "伤害", "desc": "提升每次命中伤害", "weight": 100},
-	{"id": "stat_area", "stat": StatMath.Stat.AREA, "title": "范围", "desc": "增大子弹与剑的尺寸/半径", "weight": 60},
-	{"id": "stat_duration", "stat": StatMath.Stat.DURATION, "title": "持续", "desc": "延长子弹寿命 / 加长剑身", "weight": 60},
-	{"id": "stat_speed", "stat": StatMath.Stat.SPEED, "title": "速度", "desc": "提升弹速 / 加快剑的旋转", "weight": 60},
-	{"id": "stat_count", "stat": StatMath.Stat.COUNT, "title": "数量", "desc": "+1 子弹(多瞄一敌) / +1 剑", "weight": 35},
-	{"id": "stat_pierce", "stat": StatMath.Stat.PIERCE, "title": "穿透", "desc": "子弹穿透更多敌 / 剑命中冷却↓", "weight": 35},
+	{"id": "stat_frequency", "stat": StatMath.Stat.FREQUENCY, "title": "Frequency", "desc": "Lower bullet cooldown / faster sword spin", "weight": 100},
+	{"id": "stat_damage", "stat": StatMath.Stat.DAMAGE, "title": "Damage", "desc": "Increase damage per hit", "weight": 100},
+	{"id": "stat_area", "stat": StatMath.Stat.AREA, "title": "Area", "desc": "Increase bullet/sword size", "weight": 60},
+	{"id": "stat_duration", "stat": StatMath.Stat.DURATION, "title": "Duration", "desc": "Longer bullet life / longer sword", "weight": 60},
+	{"id": "stat_speed", "stat": StatMath.Stat.SPEED, "title": "Speed", "desc": "Faster bullets / faster sword spin", "weight": 60},
+	{"id": "stat_count", "stat": StatMath.Stat.COUNT, "title": "Count", "desc": "+1 bullet (multi-target) / +1 sword", "weight": 35},
+	{"id": "stat_pierce", "stat": StatMath.Stat.PIERCE, "title": "Pierce", "desc": "Bullets pierce more / sword cooldown down", "weight": 35},
 ]
 const ENEMY_SPAWN_MARGIN := 140.0
 const MAX_ENEMIES := 120
@@ -305,9 +289,8 @@ func _build_level_up_ui() -> void:
 
 	level_up_title = Label.new()
 	level_up_title.name = "Title"
-	level_up_title.text = "升级！选择一个强化"
+	level_up_title.text = "Level Up! Choose an Upgrade"
 	level_up_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	level_up_title.add_theme_font_override("font", UpgradeUIFont)
 	level_up_title.add_theme_font_size_override("font_size", 34)
 	content.add_child(level_up_title)
 
@@ -420,7 +403,7 @@ func _check_level_up() -> void:
 
 func _show_level_up_options(level: int) -> void:
 	is_level_up_open = true
-	level_up_title.text = "等级 %d - 选择一个强化" % level
+	level_up_title.text = "Level %d - Choose an Upgrade" % level
 	for child in level_up_options_box.get_children():
 		child.queue_free()
 	if level == 1:
@@ -480,7 +463,6 @@ func _create_weapon_card(option_id: String) -> Control:
 	title.text = str(option["title"])
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.add_theme_font_override("font", UpgradeUIFont)
 	title.add_theme_font_size_override("font_size", 24)
 	card.add_child(title)
 
@@ -499,7 +481,6 @@ func _create_weapon_card(option_id: String) -> Control:
 	description.custom_minimum_size = Vector2(170, 0)
 	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	description.add_theme_font_override("font", UpgradeUIFont)
 	description.add_theme_font_size_override("font_size", 16)
 	card.add_child(description)
 
@@ -520,7 +501,6 @@ func _create_stat_card(def: Dictionary) -> Control:
 	title.text = "%s  Lv.%d → Lv.%d" % [str(def["title"]), current_stacks, current_stacks + 1]
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.add_theme_font_override("font", UpgradeUIFont)
 	title.add_theme_font_size_override("font_size", 22)
 	card.add_child(title)
 
@@ -528,7 +508,6 @@ func _create_stat_card(def: Dictionary) -> Control:
 	button.name = "SelectButton"
 	button.custom_minimum_size = Vector2(120, 120)
 	button.text = str(def["title"])
-	button.add_theme_font_override("font", UpgradeUIFont)
 	button.add_theme_font_size_override("font_size", 34)
 	button.process_mode = Node.PROCESS_MODE_ALWAYS
 	button.pressed.connect(_choose_stat.bind(stat))
@@ -539,7 +518,6 @@ func _create_stat_card(def: Dictionary) -> Control:
 	description.custom_minimum_size = Vector2(170, 0)
 	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	description.add_theme_font_override("font", UpgradeUIFont)
 	description.add_theme_font_size_override("font_size", 16)
 	card.add_child(description)
 
