@@ -50,6 +50,13 @@ $GODOT_HEAD_INCLUDE
     });
   }
 
+  function fetchWasm(url) {
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error(url + " HTTP " + r.status);
+      return r.arrayBuffer();
+    });
+  }
+
   var hasDS = typeof DecompressionStream !== "undefined";
 
   var wasmPromise = hasDS
@@ -57,9 +64,9 @@ $GODOT_HEAD_INCLUDE
         .then(function (stream) { return new Response(stream).arrayBuffer(); })
         .catch(function (e) {
           log("gzip miss, fallback .wasm");
-          return fetch(BAS + ".wasm").then(function (r) { return r.arrayBuffer(); });
+          return fetchWasm(BAS + ".wasm");
         })
-    : fetch(BAS + ".wasm").then(function (r) { return r.arrayBuffer(); });
+    : fetchWasm(BAS + ".wasm");
 
   var config = $GODOT_CONFIG;
   config.canvas = document.getElementById("canvas");
@@ -75,7 +82,24 @@ $GODOT_HEAD_INCLUDE
 
   wasmPromise.then(function (wasmBuf) {
     log("wasm ready " + (wasmBuf.byteLength / 1048576).toFixed(1) + "MB");
-    engine.preloadFile(wasmBuf, BAS + ".wasm");
+    // Godot 4.6 的 Engine.startGame() 会在 init() 内部固定 fetch(BAS + ".wasm")。
+    // Pages 产物为了绕过单文件大小限制只保留 index.wasm.gz，因此这里临时拦截
+    // 对 index.wasm 的请求，把已解压的 wasm buffer 作为 application/wasm Response 返回。
+    var originalFetch = window.fetch.bind(window);
+    var wasmUrl = new URL(BAS + ".wasm", window.location.href).href;
+    window.fetch = function (input, init) {
+      var inputUrl = typeof input === "string" ? input : (input && input.url);
+      if (inputUrl && new URL(inputUrl, window.location.href).href === wasmUrl) {
+        return Promise.resolve(new Response(wasmBuf.slice(0), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/wasm",
+            "Content-Length": String(wasmBuf.byteLength)
+          }
+        }));
+      }
+      return originalFetch(input, init);
+    };
     return engine.startGame({ "mainPack": BAS + ".pck" });
   }).then(function () {
     var el = document.getElementById("loading");
