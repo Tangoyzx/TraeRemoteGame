@@ -7,6 +7,8 @@ const CombatEffectsScene := preload("res://scripts/combat_effects.gd")
 const StatMath := preload("res://scripts/stat_math.gd")
 const AutoShooterScene := preload("res://scripts/weapons/auto_shooter.gd")
 const OrbitSwordScene := preload("res://scripts/weapons/orbit_sword.gd")
+const BossScene := preload("res://scripts/boss.gd")
+const BossIntroScene := preload("res://scripts/boss_intro.gd")
 
 const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
 const MAP_SIZE := Vector2(12800.0, 7200.0)
@@ -15,7 +17,7 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 const LEVEL_REQUIRED_SCORES := [0, 20, 200, 99999]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.0.15"
+const GAME_VERSION := "v1.1.0"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -69,6 +71,25 @@ const SPAWN_STRATEGY := [
 		},
 	},
 ]
+# Boss 配置表:每个 boss 类型携带独立数值。
+# 玩家:RADIUS=20, SPEED=230, MAX_HP=300。Big Brother 按 3x 体型 / 25% 速度。
+const BOSS_CONFIGS := {
+	"big_brother": {
+		"boss_name": "Big Brother",
+		"radius": 60.0,        # 玩家 20 * 3
+		"max_hp": 2000.0,
+		"damage": 300,
+		"speed": 57.5,         # 玩家 230 * 25%
+		"score_value": 50,
+		"body_color": Color(0.75, 0.18, 0.22, 1.0),
+		"outline_color": Color(1.0, 0.55, 0.55, 1.0),
+	},
+}
+# Boss 生成排程:固定时间点从 pool 随机选一个生成。
+const BOSS_SPAWN_SCHEDULE := [
+	{"time": 60.0, "pool": ["big_brother"]},
+]
+const BOSS_SPAWN_DISTANCE := 360.0  # 生成在玩家可见区外此距离处
 const UPGRADE_OPTIONS := {
 	"auto_shooter": {
 		"id": "auto_shooter",
@@ -127,6 +148,9 @@ var _spawn_budgets := {}
 var _acquired_upgrades := {}
 var _stat_stacks := {}
 var _unlocked_weapons := []
+var _boss_spawn_index := 0
+var _boss_intro
+var _boss_name_label: Label
 
 
 func _ready() -> void:
@@ -158,6 +182,7 @@ func _process(delta: float) -> void:
 	if camera != null and player != null:
 		camera.global_position = _clamp_to_map(player.global_position)
 	_update_enemy_spawns(delta)
+	_update_boss_spawns()
 
 
 func _build_world() -> void:
@@ -270,6 +295,17 @@ func _build_ui() -> void:
 	game_over_label.add_theme_font_size_override("font_size", 72)
 	game_over_label.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ui_layer.add_child(game_over_label)
+
+	# Boss 出场名字:屏幕正中央,过场期间显示,需 ALWAYS 才能在暂停时显示
+	_boss_name_label = Label.new()
+	_boss_name_label.name = "BossNameLabel"
+	_boss_name_label.visible = false
+	_boss_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_boss_name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_boss_name_label.add_theme_font_size_override("font_size", 64)
+	_boss_name_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_boss_name_label.process_mode = Node.PROCESS_MODE_ALWAYS
+	ui_layer.add_child(_boss_name_label)
 
 	_build_level_up_ui()
 
@@ -398,6 +434,64 @@ func _on_enemy_died(enemy) -> void:
 	_check_level_up()
 
 
+# === Boss 生成与出场过场 ===
+# 每帧检查是否到下一个排程时间点。过场进行中不再触发新 boss。
+func _update_boss_spawns() -> void:
+	if _boss_intro != null:
+		return
+	if _boss_spawn_index >= BOSS_SPAWN_SCHEDULE.size():
+		return
+	var entry: Dictionary = BOSS_SPAWN_SCHEDULE[_boss_spawn_index]
+	if elapsed_seconds < float(entry["time"]):
+		return
+	var pool: Array = entry["pool"]
+	if pool.is_empty():
+		_boss_spawn_index += 1
+		return
+	var boss_type: String = str(pool[randi() % pool.size()])
+	_spawn_boss(boss_type)
+	_boss_spawn_index += 1
+
+
+func _spawn_boss(boss_type: String) -> void:
+	if not BOSS_CONFIGS.has(boss_type):
+		return
+	var boss = BossScene.new()
+	boss.apply_config(BOSS_CONFIGS[boss_type])
+	boss.global_position = _get_boss_spawn_position()
+	boss.target = player
+	boss.died.connect(_on_enemy_died)
+	enemies_layer.add_child(boss)
+	# 启动过场:暂停全树 → 镜头缓动到 boss → 显示名字+震动 → 回到玩家 → 解暂停
+	_start_boss_intro(boss)
+
+
+# Boss 生成在玩家可见区外 BOSS_SPAWN_DISTANCE 处,在地图范围内 clamp。
+func _get_boss_spawn_position() -> Vector2:
+	var center: Vector2 = player.global_position
+	var angle := randf() * TAU
+	var pos := center + Vector2(cos(angle), sin(angle)) * BOSS_SPAWN_DISTANCE
+	return _clamp_to_map(pos)
+
+
+func _start_boss_intro(boss) -> void:
+	if _boss_intro != null:
+		return
+	_boss_intro = BossIntroScene.new()
+	_boss_intro.name = "BossIntro"
+	_boss_intro.finished.connect(_on_boss_intro_finished)
+	add_child(_boss_intro)
+	get_tree().paused = true
+	_boss_intro.play(boss, camera, _boss_name_label, player, MAP_RECT)
+
+
+func _on_boss_intro_finished() -> void:
+	if _boss_intro != null:
+		_boss_intro.queue_free()
+		_boss_intro = null
+	get_tree().paused = false
+
+
 func _update_score_label() -> void:
 	score_label.text = "Score: %d" % score
 
@@ -407,7 +501,7 @@ func _update_level_label() -> void:
 
 
 func _check_level_up() -> void:
-	if is_game_over or is_level_up_open:
+	if is_game_over or is_level_up_open or _boss_intro != null:
 		return
 	var next_level := current_level + 1
 	if next_level > LEVEL_REQUIRED_SCORES.size():
@@ -630,6 +724,12 @@ func _sync_weapon_stats(weapon: Node) -> void:
 func _on_player_died() -> void:
 	is_game_over = true
 	is_level_up_open = false
+	# 清理进行中的 boss 过场
+	if _boss_intro != null:
+		_boss_intro.queue_free()
+		_boss_intro = null
+	if _boss_name_label != null:
+		_boss_name_label.visible = false
 	get_tree().paused = false
 	if level_up_overlay != null:
 		level_up_overlay.visible = false
