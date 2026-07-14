@@ -54,7 +54,7 @@ func _try_fire_explosion(center: Vector2) -> void:
 	_fire_explosion_cooldown = FIRE_EXPLOSION_COOLDOWN
 	var radius_sq := FIRE_EXPLOSION_RADIUS * FIRE_EXPLOSION_RADIUS
 	for child in enemies_layer.get_children():
-		if child.has_method("take_damage") and is_instance_valid(child) and child.hp > 0.0:
+		if child.is_in_group("enemy") and is_instance_valid(child) and child.hp > 0.0:
 			if center.distance_squared_to(child.global_position) <= radius_sq:
 				child.take_damage(FIRE_EXPLOSION_DAMAGE)
 

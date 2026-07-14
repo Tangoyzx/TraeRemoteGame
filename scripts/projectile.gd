@@ -46,7 +46,7 @@ func _process(delta: float) -> void:
 
 
 func _on_area_entered(area: Area2D) -> void:
-	if area.has_method("take_damage"):
+	if area.is_in_group("enemy"):
 		if combat_effects != null and is_instance_valid(combat_effects):
 			combat_effects.apply_weapon_hit(area, damage, area.global_position, {"source": "projectile"})
 		else:

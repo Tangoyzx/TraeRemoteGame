@@ -97,7 +97,7 @@ func _process(delta: float) -> void:
 func _find_nearest_enemies(count: int) -> Array:
 	var entries := []
 	for child in enemies_layer.get_children():
-		if child.has_method("take_damage") and is_instance_valid(child):
+		if child.is_in_group("enemy") and is_instance_valid(child):
 			entries.append({
 				"enemy": child,
 				"dist": player.global_position.distance_squared_to(child.global_position)

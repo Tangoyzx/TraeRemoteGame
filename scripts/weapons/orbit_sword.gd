@@ -152,13 +152,13 @@ class SwordBlade:
 
 
 	func _on_area_entered(area: Area2D) -> void:
-		if area.has_method("take_damage"):
+		if area.is_in_group("enemy"):
 			_try_hit_enemy(area)
 
 
 	func _damage_overlapping_enemies() -> void:
 		for area in get_overlapping_areas():
-			if area.has_method("take_damage"):
+			if area.is_in_group("enemy"):
 				_try_hit_enemy(area)
 
 

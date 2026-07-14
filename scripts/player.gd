@@ -76,13 +76,13 @@ func _damage_overlapping_enemies() -> void:
 	if _damage_cooldown > 0.0 or hp <= 0:
 		return
 	for area in get_overlapping_areas():
-		if area.has_method("take_damage"):
+		if area.is_in_group("enemy"):
 			take_damage(area.damage)
 			return
 
 
 func _on_area_entered(area: Area2D) -> void:
-	if area.has_method("take_damage"):
+	if area.is_in_group("enemy"):
 		take_damage(area.damage)
 
 
