@@ -1,6 +1,8 @@
 class_name AutoShooter
 extends Node
 
+const StatMath := preload("res://scripts/stat_math.gd")
+
 # 基线参数(随升级变化,参见 docs/skill-calibration.md §2)。
 const BASE_FIRE_INTERVAL := 1.10
 const BASE_PROJECTILE_SPEED := 520.0
@@ -9,10 +11,11 @@ const BASE_PROJECTILE_RADIUS := 6.0
 const BASE_PROJECTILE_LIFETIME := 2.2
 const MUZZLE_OFFSET := 28.0
 
-var player: Player
+var player
 var enemies_layer: Node2D
 var projectiles_layer: Node2D
 var projectile_script: Script
+var combat_effects
 var _cooldown := 0.0
 
 # 当前参数(由 _recompute 从通用属性堆叠数推导)。
@@ -30,11 +33,12 @@ func _ready() -> void:
 	add_to_group("weapon")
 
 
-func setup(owner_player: Player, enemy_container: Node2D, projectile_container: Node2D, projectile_scene: Script) -> void:
+func setup(owner_player, enemy_container: Node2D, projectile_container: Node2D, projectile_scene: Script, effect_controller = null) -> void:
 	player = owner_player
 	enemies_layer = enemy_container
 	projectiles_layer = projectile_container
 	projectile_script = projectile_scene
+	combat_effects = effect_controller
 
 
 # 由 main 在 stat 升级时调用,传入该属性的当前堆叠数(绝对值)。
@@ -93,24 +97,24 @@ func _process(delta: float) -> void:
 func _find_nearest_enemies(count: int) -> Array:
 	var entries := []
 	for child in enemies_layer.get_children():
-		if child is Enemy and is_instance_valid(child):
+		if child.has_method("take_damage") and is_instance_valid(child):
 			entries.append({
 				"enemy": child,
 				"dist": player.global_position.distance_squared_to(child.global_position)
 			})
 	entries.sort_custom(func(a, b): return float(a["dist"]) < float(b["dist"]))
 	var result := []
-	var n := min(count, entries.size())
+	var n: int = mini(count, entries.size())
 	for i in n:
 		result.append(entries[i]["enemy"])
 	return result
 
 
-func _fire_at(enemy: Enemy) -> void:
-	var direction := enemy.global_position - player.global_position
+func _fire_at(enemy) -> void:
+	var direction: Vector2 = enemy.global_position - player.global_position
 	if direction.length_squared() <= 0.001:
 		return
-	var projectile: Projectile = projectile_script.new()
+	var projectile = projectile_script.new()
 	projectile.setup(
 		player.global_position + direction.normalized() * MUZZLE_OFFSET,
 		direction,
@@ -118,6 +122,7 @@ func _fire_at(enemy: Enemy) -> void:
 		_projectile_damage,
 		_projectile_radius,
 		_projectile_lifetime,
-		_pierce
+		_pierce,
+		combat_effects
 	)
 	projectiles_layer.add_child(projectile)

@@ -17,7 +17,7 @@
 | 参数 | 值 | 来源 |
 |---|---|---|
 | `FIRE_INTERVAL` | 1.10 s | [auto_shooter.gd:4](../scripts/weapons/auto_shooter.gd#L4) |
-| `PROJECTILE_DAMAGE` | 1 | [auto_shooter.gd:6](../scripts/weapons/auto_shooter.gd#L6) |
+| `PROJECTILE_DAMAGE` | 100 | [auto_shooter.gd:6](../scripts/weapons/auto_shooter.gd#L6) |
 | `PROJECTILE_SPEED` | 520.0 | [auto_shooter.gd:5](../scripts/weapons/auto_shooter.gd#L5) |
 | `MUZZLE_OFFSET` | 28.0 | [auto_shooter.gd:7](../scripts/weapons/auto_shooter.gd#L7) |
 | 弹体 `RADIUS` | 6.0 | [projectile.gd:4](../scripts/projectile.gd#L4) |
@@ -28,7 +28,7 @@
 ### OrbitSword
 | 参数 | 值 | 来源 |
 |---|---|---|
-| `DAMAGE` | 1 | [orbit_sword.gd:4](../scripts/weapons/orbit_sword.gd#L4) |
+| `DAMAGE` | 100 | [orbit_sword.gd:4](../scripts/weapons/orbit_sword.gd#L4) |
 | `ORBIT_RADIUS` | 186.0 | [orbit_sword.gd:5](../scripts/weapons/orbit_sword.gd#L5) |
 | `ORBIT_SPEED` | 3.4 rad/s | [orbit_sword.gd:6](../scripts/weapons/orbit_sword.gd#L6) |
 | `SIZE` | 52 × 12 | [orbit_sword.gd:7](../scripts/weapons/orbit_sword.gd#L7) |
@@ -39,10 +39,10 @@
 
 ### AutoShooter(单体)
 ```
-DPS = DAMAGE / FIRE_INTERVAL = 1 / 1.10 = 0.909
+DPS = DAMAGE / FIRE_INTERVAL = 100 / 1.10 = 90.9
 ```
 - **有效射程** = `SPEED × lifetime` = 520 × 2.2 = **1144 单位**
-- 群体 DPS = 0.909 × min(敌人数, 弹数) = 0.909(弹数=1)
+- 群体 DPS = 90.9 × min(敌人数, 弹数) = 90.9(弹数=1)
 - 定位:**单体聚焦**,DPS 高,群体能力弱
 
 ### OrbitSword(环内每个敌人)
@@ -50,19 +50,19 @@ DPS = DAMAGE / FIRE_INTERVAL = 1 / 1.10 = 0.909
 
 剑的角宽度 ≈ `长度 / 半径` = 52 / 186 = 0.280 rad,扫过定点耗时 ≈ 0.280 / 3.4 = 0.082 s < `HIT_COOLDOWN` 0.45 s → **每圈每敌只命中 1 次**。
 ```
-DPS(环内单敌) = DAMAGE / 旋转周期 = 1 / 1.848 = 0.541
+DPS(环内单敌) = DAMAGE / 旋转周期 = 100 / 1.848 = 54.1
 ```
 - **覆盖环周长** = 2π × 186 = **1168.7 单位**
-- 群体 DPS = 0.541 × N(N = 环内敌人数,无上限)
+- 群体 DPS = 54.1 × N(N = 环内敌人数,无上限)
 - 定位:**群体控制**,单敌 DPS 偏低,但群体线性放大
 
 ### 基线平衡结论
 
 | 场景 | AutoShooter | OrbitSword | 谁优 |
 |---|---|---|---|
-| 单体 BOSS | 0.909 | 0.541 | AutoShooter |
-| 2 敌人 | 0.909(只打 1 个) | 1.082 | OrbitSword |
-| N 敌人(N≥2) | 0.909 | 0.541×N | OrbitSword |
+| 单体 BOSS | 90.9 | 54.1 | AutoShooter |
+| 2 敌人 | 90.9(只打 1 个) | 108.2 | OrbitSword |
+| N 敌人(N≥2) | 90.9 | 54.1×N | OrbitSword |
 
 → **基线平衡健康**:聚焦 vs 控群的角色分工成立,无需调基线。
 
@@ -73,7 +73,7 @@ DPS(环内单敌) = DAMAGE / 旋转周期 = 1 / 1.848 = 0.541
 |---|---|---|
 | `COUNT` | 每次发射弹数(各瞄不同最近敌) | 1 |
 | `FREQUENCY` | `FIRE_INTERVAL` ↓ | 1.10 s |
-| `DAMAGE` | `PROJECTILE_DAMAGE` ↑ | 1 |
+| `DAMAGE` | `PROJECTILE_DAMAGE` ↑ | 100 |
 | `AREA` | 弹体 `RADIUS` ↑(可选溅射) | 6.0 |
 | `PIERCE` | 命中后存活的敌人数 | 0 |
 | `DURATION` | 弹体 `lifetime` ↑ | 2.2 s |
@@ -84,7 +84,7 @@ DPS(环内单敌) = DAMAGE / 旋转周期 = 1 / 1.848 = 0.541
 |---|---|---|
 | `COUNT` | 剑数(均匀分布) | 1 |
 | `FREQUENCY` | `ORBIT_SPEED` ↑ | 3.4 |
-| `DAMAGE` | `DAMAGE` ↑ | 1 |
+| `DAMAGE` | `DAMAGE` ↑ | 100 |
 | `AREA` | `ORBIT_RADIUS` ↑ + `SIZE` ↑ | 186 / 52×12 |
 | `PIERCE` | `HIT_COOLDOWN_SECONDS` ↓(每圈命中同一敌多次) | 0.45 |
 | `DURATION` | (无意义)→ 折叠进 AREA,加剑长 | — |
@@ -112,8 +112,8 @@ DPS(环内单敌) = DAMAGE / 旋转周期 = 1 / 1.848 = 0.541
 
 | 技能 | 单体 DPS | 群体 DPS(N 敌) | 增益类型 |
 |---|---|---|---|
-| AutoShooter | 0.909 → 0.909(不变) | 0.909 → 1.818(N≥2) | **覆盖增益** |
-| OrbitSword | 0.541 → 1.082(×2) | 0.541×N → 1.082×N(×2) | **DPS 增益** |
+| AutoShooter | 90.9 → 90.9(不变) | 90.9 → 181.8(N≥2) | **覆盖增益** |
+| OrbitSword | 54.1 → 108.2(×2) | 54.1×N → 108.2×N(×2) | **DPS 增益** |
 
 **失衡点**:环绕型白赚单体 DPS ×2,子弹型单体 DPS 不变。
 
@@ -128,8 +128,8 @@ DPS(环内单敌) = DAMAGE / 旋转周期 = 1 / 1.848 = 0.541
 
 | 技能 | 计算 | DPS | 增益 |
 |---|---|---|---|
-| AutoShooter | 间隔 1.10 → 1.10/1.15 = 0.957s | 1 / 0.957 = 1.045 | +15.0% |
-| OrbitSword | 转速 3.4 → 3.4×1.15×0.95 = 3.710 | 3.710/(2π) = 0.590 | +9.1% |
+| AutoShooter | 间隔 1.10 → 1.10/1.15 = 0.957s | 100 / 0.957 = 104.5 | +15.0% |
+| OrbitSword | 转速 3.4 → 3.4×1.15×0.95 = 3.710 | 100×3.710/(2π) = 59.0 | +9.1% |
 
 **结论**:Frequency 天然接近平衡(差 ~6%),OrbitSword 的 0.95 系数把它的额外手感增益压回区间内。**无需进一步调整**。
 
@@ -163,7 +163,7 @@ effective(stat, stacks) = base(stat) / (1 + dr(stat) * (stacks - 1))
 |---|---|---|
 | `COUNT +1` | +1 弹(瞄下一个最近敌) | +1 剑(均匀分布) |
 | `FREQUENCY +15%` | `FIRE_INTERVAL` ÷1.15 → 0.957s | `ORBIT_SPEED` ×1.1425 → 3.884 |
-| `DAMAGE +25%` | `PROJECTILE_DAMAGE` ×1.25 → 1.25 | `DAMAGE` ×1.25 → 1.25 |
+| `DAMAGE +25%` | `PROJECTILE_DAMAGE` ×1.25 → 125 | `DAMAGE` ×1.25 → 125 |
 | `AREA +20%` | `RADIUS` ×1.2 → 7.2 | `ORBIT_RADIUS` ×1.18 → 219.5;`SIZE` ×1.18 → 61×14 |
 | `PIERCE +1` | 命中后存活 +1 敌(穿透) | `HIT_COOLDOWN` -0.10s → 0.35s |
 | `DURATION +30%` | `lifetime` ×1.3 → 2.86s(射程→1486) | 折叠:剑长 ×1.15(半价 0.5×30%) |
@@ -175,14 +175,14 @@ effective(stat, stacks) = base(stat) / (1 + dr(stat) * (stacks - 1))
 
 | 升级 | AutoShooter DPS | 增益 | OrbitSword DPS | 增益 | 在区间? |
 |---|---|---|---|---|---|
-| 基线 | 0.909 | — | 0.541 | — | — |
-| `FREQUENCY` | 1.045 | +15.0% | 0.590 | +9.1% | ✅(剑稍低,接受) |
-| `DAMAGE` | 1.136 | +25.0% | 0.676 | +25.0% | ✅ |
-| `AREA`(子弹按射程内多命中近似) | ≈0.909 | +0%(主覆盖) | ≈0.640 | +18.3% | ✅(子弹偏覆盖,接受) |
-| `PIERCE +1`(2 敌场景) | 1.818(打 2 敌) | +100%* | 0.676(冷却↓) | +25.0% | ⚠ 见下 |
-| `COUNT +1`(2 敌场景) | 1.818 | +100%* | 1.082 | +100%* | ⚠ 见下 |
-| `DURATION` | 0.909(射程外多打) | +0%(主覆盖) | 0.622(剑长↑→角宽↑) | +15.0% | ✅ |
-| `SPEED` | 0.909(主覆盖) | +0%(主覆盖) | 折叠 | — | ✅ |
+| 基线 | 90.9 | — | 54.1 | — | — |
+| `FREQUENCY` | 104.5 | +15.0% | 59.0 | +9.1% | ✅(剑稍低,接受) |
+| `DAMAGE` | 113.6 | +25.0% | 67.6 | +25.0% | ✅ |
+| `AREA`(子弹按射程内多命中近似) | ≈90.9 | +0%(主覆盖) | ≈64.0 | +18.3% | ✅(子弹偏覆盖,接受) |
+| `PIERCE +1`(2 敌场景) | 181.8(打 2 敌) | +100%* | 67.6(冷却↓) | +25.0% | ⚠ 见下 |
+| `COUNT +1`(2 敌场景) | 181.8 | +100%* | 108.2 | +100%* | ⚠ 见下 |
+| `DURATION` | 90.9(射程外多打) | +0%(主覆盖) | 62.2(剑长↑→角宽↑) | +15.0% | ✅ |
+| `SPEED` | 90.9(主覆盖) | +0%(主覆盖) | 折叠 | — | ✅ |
 
 > `*` 标记的 +100% 是**多敌场景下的群体 DPS**,单体 DPS 不增。这类"覆盖增益"不套用 +10%~+25% 的 DPS 锚点,改用**覆盖增益锚点**:每次 COUNT/PIERCE 升级应让可同时命中的敌人数 +1,等价于群体 DPS ×(N+1)/N。靠稀有度(权重 35)和 DR(`dr=0.5`)控制其投放频率,而非压低数值。
 
@@ -192,9 +192,9 @@ effective(stat, stacks) = base(stat) / (1 + dr(stat) * (stacks - 1))
 
 | Build | AutoShooter | OrbitSword |
 |---|---|---|
-| FREQUENCY ×5 | 间隔 1.10 / (1+0.15×(1+0.71+0.56+0.45+0.38)) = 1.10/1.465 = 0.751s → 1.33 DPS(+46%) | 转速 3.4×1.425×(1.465 累积) → 0.793 DPS(+47%) |
-| DAMAGE ×5 | 1×(1+0.25×1.465)=1.366 → 1.24 DPS(+37%) | 同左 |
-| COUNT ×5 | 6 弹(群体 6 倍) | 6 剑(单体 6 倍 = 3.25 DPS) |
+| FREQUENCY ×5 | 间隔 1.10 / (1+0.15×(1+0.71+0.56+0.45+0.38)) = 1.10/1.465 = 0.751s → 133 DPS(+46%) | 转速 3.4×1.425×(1.465 累积) → 79.3 DPS(+47%) |
+| DAMAGE ×5 | 100×(1+0.25×1.465)=136.6 → 124 DPS(+37%) | 同左 |
+| COUNT ×5 | 6 弹(群体 6 倍) | 6 剑(单体 6 倍 = 325 DPS) |
 
 5 层 FREQUENCY 累积 +46% DPS,仍在合理范围(约 2 个普通升级的量)。COUNT ×5 的 6 倍是预期的"高投入高回报",靠稀有度让其难凑齐。
 

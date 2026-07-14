@@ -13,6 +13,7 @@ var score_value := 1
 var body_color := Color(0.92, 0.20, 0.20, 1.0)
 var outline_color := Color(1.0, 0.68, 0.68, 1.0)
 var target: Node2D
+var _debuffs := {}
 
 
 func _ready() -> void:
@@ -34,11 +35,12 @@ func apply_config(config: Dictionary) -> void:
 
 
 func _process(delta: float) -> void:
+	_update_debuffs(delta)
 	if target == null or not is_instance_valid(target):
 		return
 	var offset := target.global_position - global_position
 	if offset.length() > 1.0:
-		global_position += offset.normalized() * speed * delta
+		global_position += offset.normalized() * speed * _get_speed_multiplier() * delta
 
 
 func take_damage(amount: float) -> void:
@@ -48,6 +50,43 @@ func take_damage(amount: float) -> void:
 	if hp <= 0.0:
 		died.emit(self)
 		queue_free()
+
+
+func apply_debuff(debuff_id: String, duration: float, damage_per_second: float, speed_multiplier: float = 1.0) -> void:
+	if debuff_id.is_empty() or duration <= 0.0 or hp <= 0.0:
+		return
+	_debuffs[debuff_id] = {
+		"remaining": duration,
+		"damage_per_second": maxf(0.0, damage_per_second),
+		"speed_multiplier": clampf(speed_multiplier, 0.0, 1.0),
+	}
+
+
+func _update_debuffs(delta: float) -> void:
+	if _debuffs.is_empty() or hp <= 0.0:
+		return
+	var expired := []
+	for debuff_id in _debuffs.keys():
+		var debuff: Dictionary = _debuffs[debuff_id]
+		var damage_per_second := float(debuff.get("damage_per_second", 0.0))
+		if damage_per_second > 0.0:
+			take_damage(damage_per_second * delta)
+			if hp <= 0.0:
+				return
+		debuff["remaining"] = float(debuff.get("remaining", 0.0)) - delta
+		if float(debuff["remaining"]) <= 0.0:
+			expired.append(debuff_id)
+		else:
+			_debuffs[debuff_id] = debuff
+	for debuff_id in expired:
+		_debuffs.erase(debuff_id)
+
+
+func _get_speed_multiplier() -> float:
+	var multiplier := 1.0
+	for debuff in _debuffs.values():
+		multiplier = minf(multiplier, float(debuff.get("speed_multiplier", 1.0)))
+	return multiplier
 
 
 func _create_collision() -> void:

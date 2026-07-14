@@ -3,6 +3,8 @@ extends Node2D
 const PlayerScene := preload("res://scripts/player.gd")
 const EnemyScene := preload("res://scripts/enemy.gd")
 const ProjectileScene := preload("res://scripts/projectile.gd")
+const CombatEffectsScene := preload("res://scripts/combat_effects.gd")
+const StatMath := preload("res://scripts/stat_math.gd")
 const AutoShooterScene := preload("res://scripts/weapons/auto_shooter.gd")
 const OrbitSwordScene := preload("res://scripts/weapons/orbit_sword.gd")
 
@@ -13,7 +15,7 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 const LEVEL_REQUIRED_SCORES := [0, 50, 200, 99999]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.0.11"
+const GAME_VERSION := "v1.0.12"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -95,14 +97,20 @@ var stat_upgrade_defs := [
 ]
 const ENEMY_SPAWN_MARGIN := 140.0
 const MAX_ENEMIES := 120
+var element_upgrade_defs := [
+	{"id": "element_fire", "element": "fire", "title": "Fire", "desc": "On hit: explode for 50 damage in 50px radius. 20s cooldown.", "weight": 45},
+	{"id": "element_poison", "element": "poison", "title": "Poison", "desc": "On hit: poison for 10 damage/sec over 5s. Reapply resets duration.", "weight": 45},
+	{"id": "element_frost", "element": "frost", "title": "Frost", "desc": "On hit: frostbite for 2 damage/sec and 50% slow over 5s. Reapply resets duration.", "weight": 45},
+]
 
-var player: Player
+var player
 var camera: Camera2D
 var world_layer: Node2D
 var enemies_layer: Node2D
 var projectiles_layer: Node2D
 var weapons_layer: Node2D
 var ui_layer: CanvasLayer
+var combat_effects
 var score_label: Label
 var level_label: Label
 var version_label: Label
@@ -126,6 +134,7 @@ func _ready() -> void:
 	get_tree().paused = false
 	_init_spawn_budgets()
 	_build_world()
+	_build_combat_effects()
 	_spawn_player()
 	_build_ui()
 	_update_score_label()
@@ -204,6 +213,13 @@ func _create_map_border() -> Node2D:
 	border.name = "MapBorder"
 	border.map_size = MAP_SIZE
 	return border
+
+
+func _build_combat_effects() -> void:
+	combat_effects = CombatEffectsScene.new()
+	combat_effects.name = "CombatEffects"
+	combat_effects.setup(enemies_layer)
+	add_child(combat_effects)
 
 
 func _spawn_player() -> void:
@@ -345,10 +361,10 @@ func _get_spawn_position_near_view() -> Vector2:
 	var viewport_size := get_viewport_rect().size
 	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
 		viewport_size = VIEWPORT_SIZE
-	var center := camera.get_screen_center_position() if camera != null else player.global_position
+	var center: Vector2 = camera.get_screen_center_position() if camera != null else player.global_position
 	var half := viewport_size * 0.5
 	var side := randi() % 4
-	var spawn := center
+	var spawn: Vector2 = center
 	match side:
 		0:
 			spawn.x = center.x - half.x - ENEMY_SPAWN_MARGIN
@@ -376,7 +392,7 @@ func _clamp_to_map(world_position: Vector2) -> Vector2:
 	)
 
 
-func _on_enemy_died(enemy: Enemy) -> void:
+func _on_enemy_died(enemy) -> void:
 	score += enemy.score_value
 	_update_score_label()
 	_check_level_up()
@@ -407,19 +423,25 @@ func _show_level_up_options(level: int) -> void:
 	for child in level_up_options_box.get_children():
 		child.queue_free()
 	if level == 1:
-		# 首次升级:选择初始武器。
+		# Level 1: choose the initial weapon only.
 		for option_id in ["auto_shooter", "orbit_sword"]:
 			level_up_options_box.add_child(_create_weapon_card(option_id))
+	elif level == 2:
+		# Level 2: choose from stat upgrades only. Pick up to 3 from all available stats.
+		for def in _pick_weighted(_build_stat_pool(), 3):
+			level_up_options_box.add_child(_create_upgrade_card(def))
 	else:
-		# 后续升级:从已解锁武器可用的 stat 池中加权随机抽 3 个。
-		var pool := _build_stat_pool()
+		# Level 3+: choose from normal one-shot upgrades, such as elements.
+		# If one-shot normal upgrades are exhausted, fall back to stat upgrades to avoid an empty choice UI.
+		var pool := _build_normal_upgrade_pool()
+		if pool.is_empty():
+			pool = _build_stat_pool()
 		for def in _pick_weighted(pool, 3):
-			level_up_options_box.add_child(_create_stat_card(def))
+			level_up_options_box.add_child(_create_upgrade_card(def))
 	level_up_overlay.visible = true
 	get_tree().paused = true
 
-
-# 可投放的 stat 池:排除已堆满(MAX_STACKS)的属性。
+# Stat pool: excludes stats already capped at MAX_STACKS.
 func _build_stat_pool() -> Array:
 	var pool := []
 	for def in stat_upgrade_defs:
@@ -429,7 +451,16 @@ func _build_stat_pool() -> Array:
 	return pool
 
 
-# 从 pool 中按 weight 加权随机抽 n 个互不相同的项。
+# Normal upgrade pool: excludes one-shot upgrades already unlocked.
+func _build_normal_upgrade_pool() -> Array:
+	var pool := []
+	for def in element_upgrade_defs:
+		var element_id := str(def["element"])
+		if combat_effects == null or not combat_effects.is_element_unlocked(element_id):
+			pool.append(def)
+	return pool
+
+
 func _pick_weighted(pool: Array, n: int) -> Array:
 	var result := []
 	var working := pool.duplicate()
@@ -487,18 +518,19 @@ func _create_weapon_card(option_id: String) -> Control:
 	return card
 
 
-func _create_stat_card(def: Dictionary) -> Control:
-	var stat: int = int(def["stat"])
+func _create_upgrade_card(def: Dictionary) -> Control:
+	var is_element := def.has("element")
+	var stat := int(def.get("stat", -1))
 	var current_stacks: int = int(_stat_stacks.get(stat, 0))
 	var card := VBoxContainer.new()
-	card.name = "Stat_%s" % str(def["id"])
+	card.name = "Upgrade_%s" % str(def["id"])
 	card.custom_minimum_size = Vector2(180, 300)
 	card.alignment = BoxContainer.ALIGNMENT_CENTER
 	card.add_theme_constant_override("separation", 8)
 	card.process_mode = Node.PROCESS_MODE_ALWAYS
 
 	var title := Label.new()
-	title.text = "%s  Lv.%d → Lv.%d" % [str(def["title"]), current_stacks, current_stacks + 1]
+	title.text = str(def["title"]) if is_element else "%s  Lv.%d -> Lv.%d" % [str(def["title"]), current_stacks, current_stacks + 1]
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.add_theme_font_size_override("font_size", 22)
@@ -510,7 +542,10 @@ func _create_stat_card(def: Dictionary) -> Control:
 	button.text = str(def["title"])
 	button.add_theme_font_size_override("font_size", 34)
 	button.process_mode = Node.PROCESS_MODE_ALWAYS
-	button.pressed.connect(_choose_stat.bind(stat))
+	if is_element:
+		button.pressed.connect(_choose_element.bind(str(def["element"])))
+	else:
+		button.pressed.connect(_choose_stat.bind(stat))
 	card.add_child(button)
 
 	var description := Label.new()
@@ -523,7 +558,6 @@ func _create_stat_card(def: Dictionary) -> Control:
 
 	return card
 
-
 func _choose_upgrade(option_id: String) -> void:
 	_apply_upgrade(option_id)
 	_finish_level_up()
@@ -531,6 +565,12 @@ func _choose_upgrade(option_id: String) -> void:
 
 func _choose_stat(stat: int) -> void:
 	_apply_stat_upgrade(stat)
+	_finish_level_up()
+
+
+func _choose_element(element_id: String) -> void:
+	if combat_effects != null:
+		combat_effects.unlock_element(element_id)
 	_finish_level_up()
 
 
@@ -567,7 +607,7 @@ func _apply_stat_upgrade(stat: int) -> void:
 func _create_auto_shooter() -> void:
 	var auto_shooter := AutoShooterScene.new()
 	auto_shooter.name = "AutoShooter"
-	auto_shooter.setup(player, enemies_layer, projectiles_layer, ProjectileScene)
+	auto_shooter.setup(player, enemies_layer, projectiles_layer, ProjectileScene, combat_effects)
 	weapons_layer.add_child(auto_shooter)
 	_unlocked_weapons.append(auto_shooter)
 	_sync_weapon_stats(auto_shooter)
@@ -576,7 +616,7 @@ func _create_auto_shooter() -> void:
 func _create_orbit_sword() -> void:
 	var orbit_sword := OrbitSwordScene.new()
 	orbit_sword.name = "OrbitSword"
-	orbit_sword.setup(player)
+	orbit_sword.setup(player, combat_effects)
 	weapons_layer.add_child(orbit_sword)
 	_unlocked_weapons.append(orbit_sword)
 	_sync_weapon_stats(orbit_sword)

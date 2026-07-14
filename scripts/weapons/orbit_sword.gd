@@ -1,6 +1,8 @@
 class_name OrbitSword
 extends Node2D
 
+const StatMath := preload("res://scripts/stat_math.gd")
+
 # 基线参数(随升级变化,参见 docs/skill-calibration.md §2)。
 const BASE_DAMAGE := 100.0
 const BASE_ORBIT_RADIUS := 186.0
@@ -22,7 +24,8 @@ var _K := {
 	StatMath.Stat.SPEED: 0.95,
 }
 
-var player: Player
+var player
+var combat_effects
 var _angle := 0.0
 var _blades: Array = []
 var _stat_stacks := {}
@@ -41,8 +44,11 @@ func _ready() -> void:
 	_rebuild_blades()
 
 
-func setup(owner_player: Player) -> void:
+func setup(owner_player, effect_controller = null) -> void:
 	player = owner_player
+	combat_effects = effect_controller
+	for blade in _blades:
+		blade.combat_effects = combat_effects
 
 
 # 由 main 在 stat 升级时调用,传入该属性的当前堆叠数(绝对值)。
@@ -89,7 +95,7 @@ func _rebuild_blades() -> void:
 	_blades.clear()
 	for i in _sword_count:
 		var blade := SwordBlade.new()
-		blade.setup(_size, _damage, _hit_cooldown)
+		blade.setup(_size, _damage, _hit_cooldown, combat_effects)
 		add_child(blade)
 		_blades.append(blade)
 
@@ -122,6 +128,7 @@ class SwordBlade:
 	var size := Vector2(52.0, 12.0)
 	var damage := 100.0
 	var hit_cooldown := 0.45
+	var combat_effects
 	var _hit_cooldowns := {}
 	var _shape: RectangleShape2D
 
@@ -132,10 +139,11 @@ class SwordBlade:
 		queue_redraw()
 
 
-	func setup(sz: Vector2, dmg: float, cd: float) -> void:
+	func setup(sz: Vector2, dmg: float, cd: float, effect_controller = null) -> void:
 		size = sz
 		damage = dmg
 		hit_cooldown = cd
+		combat_effects = effect_controller
 
 
 	func tick(delta: float) -> void:
@@ -144,23 +152,26 @@ class SwordBlade:
 
 
 	func _on_area_entered(area: Area2D) -> void:
-		if area is Enemy:
+		if area.has_method("take_damage"):
 			_try_hit_enemy(area)
 
 
 	func _damage_overlapping_enemies() -> void:
 		for area in get_overlapping_areas():
-			if area is Enemy:
+			if area.has_method("take_damage"):
 				_try_hit_enemy(area)
 
 
-	func _try_hit_enemy(enemy: Enemy) -> void:
+	func _try_hit_enemy(enemy) -> void:
 		if enemy == null or not is_instance_valid(enemy):
 			return
-		var id := enemy.get_instance_id()
+		var id: int = enemy.get_instance_id()
 		if _hit_cooldowns.has(id):
 			return
-		enemy.take_damage(damage)
+		if combat_effects != null and is_instance_valid(combat_effects):
+			combat_effects.apply_weapon_hit(enemy, damage, enemy.global_position, {"source": "orbit_sword"})
+		else:
+			enemy.take_damage(damage)
 		_hit_cooldowns[id] = hit_cooldown
 
 

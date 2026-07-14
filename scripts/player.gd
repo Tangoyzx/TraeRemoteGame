@@ -4,7 +4,9 @@ extends Area2D
 signal died
 
 const RADIUS := 20.0
-const MAX_HP := 300
+# Internal HP/damage unit: 100 = 1 player-facing HP point.
+const HP_UNIT := 100
+const MAX_HP := 3 * HP_UNIT
 const SPEED := 230.0
 const CONTACT_INVULNERABLE_SECONDS := 2.0
 const FLASH_INTERVAL := 0.1
@@ -74,13 +76,13 @@ func _damage_overlapping_enemies() -> void:
 	if _damage_cooldown > 0.0 or hp <= 0:
 		return
 	for area in get_overlapping_areas():
-		if area is Enemy:
+		if area.has_method("take_damage"):
 			take_damage(area.damage)
 			return
 
 
 func _on_area_entered(area: Area2D) -> void:
-	if area is Enemy:
+	if area.has_method("take_damage"):
 		take_damage(area.damage)
 
 

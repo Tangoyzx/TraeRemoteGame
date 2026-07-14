@@ -9,6 +9,7 @@ var lifetime := 2.2
 var radius := BASE_RADIUS
 # 命中后仍可继续穿透的敌人数(0 = 命中即销毁)。
 var pierce := 0
+var combat_effects
 
 
 func _ready() -> void:
@@ -25,7 +26,8 @@ func setup(
 	projectile_damage: float,
 	projectile_radius: float,
 	projectile_lifetime: float,
-	pierce_count: int
+	pierce_count: int,
+	effect_controller = null
 ) -> void:
 	global_position = start_position
 	velocity = direction.normalized() * projectile_speed
@@ -33,6 +35,7 @@ func setup(
 	radius = projectile_radius
 	lifetime = projectile_lifetime
 	pierce = pierce_count
+	combat_effects = effect_controller
 
 
 func _process(delta: float) -> void:
@@ -43,8 +46,11 @@ func _process(delta: float) -> void:
 
 
 func _on_area_entered(area: Area2D) -> void:
-	if area is Enemy:
-		area.take_damage(damage)
+	if area.has_method("take_damage"):
+		if combat_effects != null and is_instance_valid(combat_effects):
+			combat_effects.apply_weapon_hit(area, damage, area.global_position, {"source": "projectile"})
+		else:
+			area.take_damage(damage)
 		if pierce > 0:
 			pierce -= 1
 		else:
