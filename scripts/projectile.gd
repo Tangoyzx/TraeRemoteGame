@@ -71,7 +71,7 @@ func _create_collision() -> void:
 
 
 func _draw() -> void:
-	var c := DEFAULT_COLOR
+	var c: Color = DEFAULT_COLOR
 	if combat_effects != null and is_instance_valid(combat_effects):
 		c = combat_effects.get_dominant_element_color(c)
 	draw_circle(Vector2.ZERO, radius, c)

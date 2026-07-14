@@ -15,7 +15,9 @@ var outline_color := Color(1.0, 0.68, 0.68, 1.0)
 var target: Node2D
 var _debuffs := {}
 # debuff → 浅色滤镜映射(叠在 body 之上,半透明,避免变成纯色)。
-const DEBUFF_TINTS := {
+# 用 var 而非 const:const Dictionary 在 release 编译器里 [] 索引的值类型无法
+# 静态推断为 Color,会导致 extends 本类的 boss.gd / preload 链编译失败。
+var DEBUFF_TINTS := {
 	"poison": Color(0.55, 1.0, 0.55, 0.40),
 	"frost": Color(0.55, 0.80, 1.0, 0.45),
 }
@@ -127,4 +129,4 @@ func _draw() -> void:
 	# debuff 浅色滤镜叠在 body 之上;多 debuff 时依次叠加形成混色。
 	for debuff_id in DEBUFF_TINTS.keys():
 		if _debuffs.has(debuff_id):
-			draw_circle(Vector2.ZERO, radius, DEBUFF_TINTS[debuff_id])
+			draw_circle(Vector2.ZERO, radius, Color(DEBUFF_TINTS[debuff_id]))

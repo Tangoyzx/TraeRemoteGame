@@ -162,15 +162,12 @@ class SwordBlade:
 
 	# 按当前主元素刷新剑身色;变化时才触发重绘,避免每帧无谓 redraw。
 	func _refresh_color() -> void:
-		var fill: Color
-		var edge: Color
+		var fill := DEFAULT_FILL
+		var edge := DEFAULT_EDGE
 		if combat_effects != null and is_instance_valid(combat_effects) and combat_effects.get_dominant_element() != "":
-			var c := combat_effects.get_dominant_element_color()
+			var c: Color = combat_effects.get_dominant_element_color(Color.WHITE)
 			fill = Color(c.r, c.g, c.b, 1.0)
 			edge = Color(c.r * 0.55, c.g * 0.55, c.b * 0.55, 1.0)
-		else:
-			fill = DEFAULT_FILL
-			edge = DEFAULT_EDGE
 		if fill != _cached_fill:
 			_cached_fill = fill
 			_cached_edge = edge

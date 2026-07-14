@@ -17,13 +17,15 @@ const FROST_DURATION := 5.0
 const FROST_SPEED_MULTIPLIER := 0.5
 
 # 元素 → 显示色映射(火=红、毒=绿、冰=蓝)。武器获得元素后会按此着色。
-const ELEMENT_COLORS := {
+# 用 var 而非 const:const Dictionary 在 release 编译器里 .get()/[] 的值类型
+# 无法静态推断为 Color,会导致依赖本脚本的 main.gd 编译失败。
+var ELEMENT_COLORS := {
 	ELEMENT_FIRE: Color(1.0, 0.32, 0.28, 1.0),
 	ELEMENT_POISON: Color(0.40, 0.95, 0.40, 1.0),
 	ELEMENT_FROST: Color(0.45, 0.75, 1.0, 1.0),
 }
 # 多元素同时解锁时,武器展示用此顺序的首个元素颜色。
-const ELEMENT_PRIORITY := [ELEMENT_FIRE, ELEMENT_POISON, ELEMENT_FROST]
+var ELEMENT_PRIORITY := [ELEMENT_FIRE, ELEMENT_POISON, ELEMENT_FROST]
 
 var enemies_layer: Node2D
 var _unlocked_elements := {}
@@ -49,7 +51,7 @@ func is_element_unlocked(element_id: String) -> bool:
 
 # 查询某元素的显示色。
 func get_element_color(element_id: String) -> Color:
-	return ELEMENT_COLORS.get(element_id, Color.WHITE)
+	return Color(ELEMENT_COLORS.get(element_id, Color.WHITE))
 
 
 # 当前武器应展示的主元素(按 ELEMENT_PRIORITY 取首个已解锁的);都没有则返回空串。
@@ -109,10 +111,8 @@ class ExplosionFlash:
 	func _ready() -> void:
 		queue_redraw()
 		var tw := create_tween()
-		tw.tween_property(self, "scale", Vector2(1.15, 1.15), 0.35)\
-			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-		tw.parallel().tween_property(self, "modulate:a", 0.0, 0.35)\
-			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+		tw.tween_property(self, "scale", Vector2(1.15, 1.15), 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(self, "modulate:a", 0.0, 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 		tw.tween_callback(queue_free)
 
 	func _draw() -> void:
