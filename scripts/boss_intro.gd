@@ -20,6 +20,8 @@ const STAY_DURATION := 2.0
 const FOCUS_OUT_DURATION := 0.5
 const SHAKE_AMPLITUDE := 8.0
 
+enum State { IDLE, FOCUS_IN, STAY, FOCUS_OUT, DONE }
+
 var _camera: Camera2D
 var _name_label: Label
 var _boss
@@ -30,9 +32,6 @@ var _state: int = State.IDLE
 var _timer: float = 0.0
 var _tween: Tween
 var _focus_origin: Vector2  # 玩家位置(用于 FOCUS_OUT 回归)
-
-
-enum State { IDLE, FOCUS_IN, STAY, FOCUS_OUT, DONE }
 
 
 func _ready() -> void:
