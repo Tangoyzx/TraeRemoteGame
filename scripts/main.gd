@@ -17,7 +17,7 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 const LEVEL_REQUIRED_SCORES := [0, 20, 200, 99999]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.1.3"
+const GAME_VERSION := "v1.1.4"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -119,7 +119,7 @@ var stat_upgrade_defs := [
 const ENEMY_SPAWN_MARGIN := 140.0
 const MAX_ENEMIES := 120
 var element_upgrade_defs := [
-	{"id": "element_fire", "element": "fire", "title": "Fire", "desc": "On hit: explode for 50 damage in 50px radius. 20s cooldown.", "weight": 45},
+	{"id": "element_fire", "element": "fire", "title": "Fire", "desc": "On hit: explode for 50 damage in 100px radius. 5s cooldown.", "weight": 45},
 	{"id": "element_poison", "element": "poison", "title": "Poison", "desc": "On hit: poison for 10 damage/sec over 5s. Reapply resets duration.", "weight": 45},
 	{"id": "element_frost", "element": "frost", "title": "Frost", "desc": "On hit: frostbite for 2 damage/sec and 50% slow over 5s. Reapply resets duration.", "weight": 45},
 ]
