@@ -2,6 +2,8 @@ class_name Projectile
 extends Area2D
 
 const BASE_RADIUS := 6.0
+# 无元素时的默认弹体色(暖黄)。
+const DEFAULT_COLOR := Color(1.0, 0.86, 0.16, 1.0)
 
 var velocity := Vector2.ZERO
 var damage := 100.0
@@ -36,6 +38,8 @@ func setup(
 	lifetime = projectile_lifetime
 	pierce = pierce_count
 	combat_effects = effect_controller
+	# setup 在 add_child 之前/之后都可能被调用,确保元素色被刷新到绘制。
+	queue_redraw()
 
 
 func _process(delta: float) -> void:
@@ -67,4 +71,7 @@ func _create_collision() -> void:
 
 
 func _draw() -> void:
-	draw_circle(Vector2.ZERO, radius, Color(1.0, 0.86, 0.16, 1.0))
+	var c := DEFAULT_COLOR
+	if combat_effects != null and is_instance_valid(combat_effects):
+		c = combat_effects.get_dominant_element_color(c)
+	draw_circle(Vector2.ZERO, radius, c)

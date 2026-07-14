@@ -14,6 +14,12 @@ var body_color := Color(0.92, 0.20, 0.20, 1.0)
 var outline_color := Color(1.0, 0.68, 0.68, 1.0)
 var target: Node2D
 var _debuffs := {}
+# debuff → 浅色滤镜映射(叠在 body 之上,半透明,避免变成纯色)。
+const DEBUFF_TINTS := {
+	"poison": Color(0.55, 1.0, 0.55, 0.40),
+	"frost": Color(0.55, 0.80, 1.0, 0.45),
+}
+var _debuff_sig := ""
 
 
 func _ready() -> void:
@@ -36,11 +42,28 @@ func apply_config(config: Dictionary) -> void:
 
 func _process(delta: float) -> void:
 	_update_debuffs(delta)
+	_refresh_debuff_redraw()
 	if target == null or not is_instance_valid(target):
 		return
 	var offset := target.global_position - global_position
 	if offset.length() > 1.0:
 		global_position += offset.normalized() * speed * _get_speed_multiplier() * delta
+
+
+# debuff 集合变化时才重绘,避免每帧无谓 redraw。
+func _refresh_debuff_redraw() -> void:
+	var sig := _debuff_signature()
+	if sig != _debuff_sig:
+		_debuff_sig = sig
+		queue_redraw()
+
+
+func _debuff_signature() -> String:
+	if _debuffs.is_empty():
+		return ""
+	var keys := _debuffs.keys()
+	keys.sort()
+	return ",".join(PackedStringArray(keys))
 
 
 func take_damage(amount: float) -> void:
@@ -101,3 +124,7 @@ func _create_collision() -> void:
 func _draw() -> void:
 	draw_circle(Vector2.ZERO, radius, body_color)
 	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 32, outline_color, 2.0)
+	# debuff 浅色滤镜叠在 body 之上;多 debuff 时依次叠加形成混色。
+	for debuff_id in DEBUFF_TINTS.keys():
+		if _debuffs.has(debuff_id):
+			draw_circle(Vector2.ZERO, radius, DEBUFF_TINTS[debuff_id])

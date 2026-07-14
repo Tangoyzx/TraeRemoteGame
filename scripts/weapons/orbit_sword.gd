@@ -125,12 +125,19 @@ func _k(stat: int) -> float:
 class SwordBlade:
 	extends Area2D
 
+	# 无元素时的默认剑身色(蓝白)。
+	const DEFAULT_FILL := Color(0.88, 0.96, 1.0, 1.0)
+	const DEFAULT_EDGE := Color(0.38, 0.78, 1.0, 1.0)
+
 	var size := Vector2(52.0, 12.0)
 	var damage := 100.0
 	var hit_cooldown := 0.45
 	var combat_effects
 	var _hit_cooldowns := {}
 	var _shape: RectangleShape2D
+	# 缓存当前绘制色,仅在元素变化时触发 queue_redraw。
+	var _cached_fill := DEFAULT_FILL
+	var _cached_edge := DEFAULT_EDGE
 
 
 	func _ready() -> void:
@@ -144,11 +151,30 @@ class SwordBlade:
 		damage = dmg
 		hit_cooldown = cd
 		combat_effects = effect_controller
+		_refresh_color()
 
 
 	func tick(delta: float) -> void:
 		_update_hit_cooldowns(delta)
 		_damage_overlapping_enemies()
+		_refresh_color()
+
+
+	# 按当前主元素刷新剑身色;变化时才触发重绘,避免每帧无谓 redraw。
+	func _refresh_color() -> void:
+		var fill: Color
+		var edge: Color
+		if combat_effects != null and is_instance_valid(combat_effects) and combat_effects.get_dominant_element() != "":
+			var c := combat_effects.get_dominant_element_color()
+			fill = Color(c.r, c.g, c.b, 1.0)
+			edge = Color(c.r * 0.55, c.g * 0.55, c.b * 0.55, 1.0)
+		else:
+			fill = DEFAULT_FILL
+			edge = DEFAULT_EDGE
+		if fill != _cached_fill:
+			_cached_fill = fill
+			_cached_edge = edge
+			queue_redraw()
 
 
 	func _on_area_entered(area: Area2D) -> void:
@@ -196,5 +222,5 @@ class SwordBlade:
 
 	func _draw() -> void:
 		var rect := Rect2(-size * 0.5, size)
-		draw_rect(rect, Color(0.88, 0.96, 1.0, 1.0), true)
-		draw_rect(rect, Color(0.38, 0.78, 1.0, 1.0), false, 2.0)
+		draw_rect(rect, _cached_fill, true)
+		draw_rect(rect, _cached_edge, false, 2.0)
