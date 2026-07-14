@@ -15,7 +15,7 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 const LEVEL_REQUIRED_SCORES := [0, 20, 200, 99999]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.0.14"
+const GAME_VERSION := "v1.0.15"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -427,16 +427,15 @@ func _show_level_up_options(level: int) -> void:
 		for option_id in ["auto_shooter", "orbit_sword"]:
 			level_up_options_box.add_child(_create_weapon_card(option_id))
 	elif level == 2:
-		# Level 2: choose from stat upgrades only. Pick up to 3 from all available stats.
-		for def in _pick_weighted(_build_stat_pool(), 3):
-			level_up_options_box.add_child(_create_upgrade_card(def))
-	else:
-		# Level 3+: choose from normal one-shot upgrades, such as elements.
-		# If one-shot normal upgrades are exhausted, fall back to stat upgrades to avoid an empty choice UI.
+		# Level 2: choose an element (one-shot). If all elements exhausted, fall back to stat upgrades.
 		var pool := _build_normal_upgrade_pool()
 		if pool.is_empty():
 			pool = _build_stat_pool()
 		for def in _pick_weighted(pool, 3):
+			level_up_options_box.add_child(_create_upgrade_card(def))
+	else:
+		# Level 3+: choose from stat upgrades (repeatable up to MAX_STACKS).
+		for def in _pick_weighted(_build_stat_pool(), 3):
 			level_up_options_box.add_child(_create_upgrade_card(def))
 	level_up_overlay.visible = true
 	get_tree().paused = true
