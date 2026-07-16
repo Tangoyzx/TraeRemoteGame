@@ -43,10 +43,26 @@ jobs:
         run: |
           godot --headless --path . --import --quit
 
+      - name: Diagnose preset & templates
+        run: |
+          echo "=== export_presets.cfg (thread_support should be false) ==="
+          grep -n "thread_support\|custom_template" export_presets.cfg || true
+          echo "=== installed web templates ==="
+          ls -1 ~/.local/share/godot/export_templates/4.6.1.stable/ 2>/dev/null | grep -i web || true
+          echo "=== template dir contents (web-related) ==="
+          find ~/.local/share/godot/export_templates/4.6.1.stable/ -iname "*web*" 2>/dev/null || true
+
       - name: Export Web
         run: |
           mkdir -p dist
-          godot --headless --path . --export-release "Web" "dist/index.html"
+          godot --headless --path . --export-release "Web" "dist/index.html" 2>&1 | tee export.log
+          echo "=== dist contents ==="
+          ls -la dist/
+          echo "=== thread markers in index.js (expect 0 for non-threaded) ==="
+          grep -c "SharedArrayBuffer" dist/index.js || true
+          grep -c "pthread" dist/index.js || true
+          echo "=== audio.position.worklet present? (only in threaded) ==="
+          ls dist/index.audio.position.worklet.js 2>/dev/null && echo "THREADED BUILD" || echo "no position worklet"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
