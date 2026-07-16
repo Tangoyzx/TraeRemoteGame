@@ -43,10 +43,41 @@ $GODOT_HEAD_INCLUDE
     if (el) el.textContent = msg;
   }
 
+  // 统一进度更新:p 为 0~100 的百分比,msg 显示在下方。条宽与文字同步。
+  function setProgress(p, msg) {
+    p = Math.max(0, Math.min(100, p));
+    var fill = document.getElementById("fill");
+    if (fill) fill.style.width = p + "%";
+    var pct = document.getElementById("pct");
+    if (pct) pct.textContent = (msg ? msg : Math.round(p) + "%");
+  }
+
   function fetchAndDecompress(url) {
+    // 带 gzip 压缩的 wasm 下载+解压阶段。用 reader 逐块读取解压流,
+    // 既追踪已解压字节数驱动进度条(占 0~85%),又组装成 arrayBuffer 返回。
     return fetch(url).then(function (r) {
       if (!r.ok) throw new Error(url + " HTTP " + r.status);
-      return r.body.pipeThrough(new DecompressionStream("gzip"));
+      var total = parseInt(r.headers.get("Content-Length") || "0", 10);
+      var decompressed = r.body.pipeThrough(new DecompressionStream("gzip"));
+      var reader = decompressed.getReader();
+      var chunks = [];
+      var received = 0;
+      function pump() {
+        return reader.read().then(function (res) {
+          if (res.done) {
+            log("wasm decompressed " + (received / 1048576).toFixed(1) + "MB");
+            return new Blob(chunks).arrayBuffer();
+          }
+          chunks.push(res.value);
+          received += res.value.byteLength;
+          // 解压后体积约压缩前的 6x;用它估算进度,封顶 85%。
+          var estDecompressed = total > 0 ? total * 6 : received;
+          var ratio = Math.min(1, received / estDecompressed);
+          setProgress(85 * ratio, "decompress " + (received / 1048576).toFixed(1) + "MB");
+          return pump();
+        });
+      }
+      return pump();
     });
   }
 
@@ -61,7 +92,6 @@ $GODOT_HEAD_INCLUDE
 
   var wasmPromise = hasDS
     ? fetchAndDecompress(BAS + ".wasm.gz")
-        .then(function (stream) { return new Response(stream).arrayBuffer(); })
         .catch(function (e) {
           log("gzip miss, fallback .wasm");
           return fetchWasm(BAS + ".wasm");
@@ -70,11 +100,11 @@ $GODOT_HEAD_INCLUDE
 
   var config = $GODOT_CONFIG;
   config.canvas = document.getElementById("canvas");
+  // Godot 的 onProgress 负责最后 85~100% 区间(wasm 实例化 + pck 加载)。
   config.onProgress = function (cur, total) {
     if (total > 0) {
-      var p = Math.round((cur / total) * 100);
-      document.getElementById("fill").style.width = p + "%";
-      document.getElementById("pct").textContent = p + "%";
+      var p = 85 + Math.round((cur / total) * 15);
+      setProgress(p, null);
     }
   };
 
