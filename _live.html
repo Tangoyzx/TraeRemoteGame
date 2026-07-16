@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trae Remote Game Demo</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
+  #canvas { display: block; width: 100vw; height: 100vh; }
+  #loading {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #111; z-index: 10;
+  }
+  #loading h1 { font-size: 18px; font-weight: 500; margin-bottom: 16px; }
+  #bar { width: 240px; height: 6px; background: #333; border-radius: 3px; overflow: hidden; }
+  #fill { width: 0%; height: 100%; background: #4a9; transition: width 0.2s; }
+  #pct { margin-top: 10px; font-size: 12px; color: #888; word-break: break-all; max-width: 90vw; text-align: center; }
+</style>
+<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="loading">
+  <h1>Loading…</h1>
+  <div id="bar"><div id="fill"></div></div>
+  <div id="pct">0%</div>
+</div>
+<script src="index.js"></script>
+<script>
+(function () {
+  // 优先加载预压缩产物 (.wasm.gz)，浏览器端用 DecompressionStream("gzip") 解压。
+  // gzip 在所有支持 DecompressionStream 的浏览器里都确定可用（brotli 实现不统一）。
+  // 回退链：.wasm.gz 解压 → 失败则直接 fetch .wasm（兼容未预压缩环境）。
+  // 注意：Godot 4.6 自定义 shell 不支持 $GODOT_BASENAME，从 index.js（如 "index.js"）推导。
+  var GURL = "index.js";
+  var BAS = GURL.replace(/\.js$/, "");
+
+  function log(msg) {
+    console.log("[load]", msg);
+    var el = document.getElementById("pct");
+    if (el) el.textContent = msg;
+  }
+
+  // 统一进度更新:p 为 0~100 的百分比,msg 显示在下方。条宽与文字同步。
+  function setProgress(p, msg) {
+    p = Math.max(0, Math.min(100, p));
+    var fill = document.getElementById("fill");
+    if (fill) fill.style.width = p + "%";
+    var pct = document.getElementById("pct");
+    if (pct) pct.textContent = (msg ? msg : Math.round(p) + "%");
+  }
+
+  function fetchAndDecompress(url) {
+    // 带 gzip 压缩的 wasm 下载+解压阶段。用 reader 逐块读取解压流,
+    // 既追踪已解压字节数驱动进度条(占 0~85%),又组装成 arrayBuffer 返回。
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error(url + " HTTP " + r.status);
+      var total = parseInt(r.headers.get("Content-Length") || "0", 10);
+      var decompressed = r.body.pipeThrough(new DecompressionStream("gzip"));
+      var reader = decompressed.getReader();
+      var chunks = [];
+      var received = 0;
+      function pump() {
+        return reader.read().then(function (res) {
+          if (res.done) {
+            log("wasm decompressed " + (received / 1048576).toFixed(1) + "MB");
+            return new Blob(chunks).arrayBuffer();
+          }
+          chunks.push(res.value);
+          received += res.value.byteLength;
+          // 解压后体积约压缩前的 6x;用它估算进度,封顶 85%。
+          var estDecompressed = total > 0 ? total * 6 : received;
+          var ratio = Math.min(1, received / estDecompressed);
+          setProgress(85 * ratio, "decompress " + (received / 1048576).toFixed(1) + "MB");
+          return pump();
+        });
+      }
+      return pump();
+    });
+  }
+
+  function fetchWasm(url) {
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error(url + " HTTP " + r.status);
+      return r.arrayBuffer();
+    });
+  }
+
+  var hasDS = typeof DecompressionStream !== "undefined";
+
+  var wasmPromise = hasDS
+    ? fetchAndDecompress(BAS + ".wasm.gz")
+        .catch(function (e) {
+          log("gzip miss, fallback .wasm");
+          return fetchWasm(BAS + ".wasm");
+        })
+    : fetchWasm(BAS + ".wasm");
+
+  var config = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":56648,"index.wasm":37685705},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+  config.canvas = document.getElementById("canvas");
+  // Godot 的 onProgress 负责最后 85~100% 区间(wasm 实例化 + pck 加载)。
+  config.onProgress = function (cur, total) {
+    if (total > 0) {
+      var p = 85 + Math.round((cur / total) * 15);
+      setProgress(p, null);
+    }
+  };
+
+  var engine = new Engine(config);
+
+  wasmPromise.then(function (wasmBuf) {
+    log("wasm ready " + (wasmBuf.byteLength / 1048576).toFixed(1) + "MB");
+    // Godot 4.6 的 Engine.startGame() 会在 init() 内部固定 fetch(BAS + ".wasm")。
+    // Pages 产物为了绕过单文件大小限制只保留 index.wasm.gz，因此这里临时拦截
+    // 对 index.wasm 的请求，把已解压的 wasm buffer 作为 application/wasm Response 返回。
+    var originalFetch = window.fetch.bind(window);
+    var wasmUrl = new URL(BAS + ".wasm", window.location.href).href;
+    window.fetch = function (input, init) {
+      var inputUrl = typeof input === "string" ? input : (input && input.url);
+      if (inputUrl && new URL(inputUrl, window.location.href).href === wasmUrl) {
+        return Promise.resolve(new Response(wasmBuf.slice(0), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/wasm",
+            "Content-Length": String(wasmBuf.byteLength)
+          }
+        }));
+      }
+      return originalFetch(input, init);
+    };
+    return engine.startGame({ "mainPack": BAS + ".pck" });
+  }).then(function () {
+    var el = document.getElementById("loading");
+    if (el) el.style.display = "none";
+  }).catch(function (err) {
+    console.error(err);
+    log("Load failed: " + (err && err.message ? err.message : err));
+  });
+})();
+</script>
+</body>
+</html>
