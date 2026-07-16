@@ -43,28 +43,10 @@ jobs:
         run: |
           godot --headless --path . --import --quit
 
-      - name: Diagnose preset & templates
-        run: |
-          echo "=== export_presets.cfg (thread_support should be false) ==="
-          grep -n "thread_support\|custom_template" export_presets.cfg || true
-          echo "=== installed web templates ==="
-          ls -1 ~/.local/share/godot/export_templates/4.6.1.stable/ 2>/dev/null | grep -i web || true
-          echo "=== compare threaded vs non-threaded wasm ==="
-          TPL_DIR="$HOME/.local/share/godot/export_templates/4.6.1.stable"
-          for tpl in web_release.zip web_nothreads_release.zip; do
-            echo "--- $tpl ---"
-            TMP=$(mktemp -d)
-            unzip -o -q "$TPL_DIR/$tpl" -d "$TMP"
-            ls -l "$TMP"/*.wasm
-            echo "wasm strings containing 'shared'/'atomic'/'pthread' (count):"
-            strings "$TMP"/godot.wasm | grep -c -i -E "sharedarraybuffer|__atomics|pthread_create" || echo 0
-            rm -rf "$TMP"
-          done
-
       - name: Force non-threaded template
-        # Godot 4.6.1 CLI 导出会忽略 export_presets.cfg 里的 variant/thread_support=false，
-        # 仍用线程版模板（需 SharedArrayBuffer，GitHub Pages 无 COOP/COEP 头无法运行）。
-        # 显式把 custom_template/release 指向 runner 上的非线程模板，强制产出非线程版。
+        # GitHub Pages 不发 COOP/COEP 头，必须用非线程版 wasm（不需 SharedArrayBuffer）。
+        # export_presets.cfg 已设 variant/thread_support=false，这里显式指定非线程模板
+        # 作为双保险，确保产物是 web_nothreads_release.zip 编译的非线程版。
         run: |
           NO_THREADS_TPL="$HOME/.local/share/godot/export_templates/4.6.1.stable/web_nothreads_release.zip"
           if [ ! -f "$NO_THREADS_TPL" ]; then
@@ -77,11 +59,7 @@ jobs:
       - name: Export Web
         run: |
           mkdir -p dist
-          godot --headless --path . --export-release "Web" "dist/index.html" 2>&1 | tee export.log
-          echo "=== dist contents ==="
-          ls -la dist/
-          echo "=== exported wasm thread markers (expect 0 for non-threaded) ==="
-          strings dist/index.wasm | grep -c -i -E "sharedarraybuffer|__atomics|pthread_create" || echo 0
+          godot --headless --path . --export-release "Web" "dist/index.html"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
