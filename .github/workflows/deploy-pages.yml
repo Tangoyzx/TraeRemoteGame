@@ -13,7 +13,9 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  # 取消进行中的旧部署，避免重跑时残留同名 artifact 导致 deploy-pages 报
+  # "Multiple artifacts named github-pages were unexpectedly found"。
+  cancel-in-progress: true
 
 jobs:
   export-web:
@@ -45,18 +47,6 @@ jobs:
         run: |
           mkdir -p dist
           godot --headless --path . --export-release "Web" "dist/index.html"
-
-      - name: Gzip-precompress large assets
-        run: |
-          # 用 gzip 预压缩 wasm（36MB → ~11MB），自定义 HTML shell 用 DecompressionStream("gzip") 解压
-          # gzip 在所有支持 DecompressionStream 的浏览器里都确定可用（brotli 实现不统一）
-          set -e
-          cd dist
-          gzip -9 -k -f index.wasm
-          echo "index.wasm -> $(du -h index.wasm.gz | cut -f1)"
-          # 删除原始 wasm：.wasm.gz 满足 EdgeOne 25MB 单文件限制，回退时再重建
-          rm -f index.wasm
-          ls -lh
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
