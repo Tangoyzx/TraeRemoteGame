@@ -49,31 +49,28 @@ jobs:
           grep -n "thread_support\|custom_template" export_presets.cfg || true
           echo "=== installed web templates ==="
           ls -1 ~/.local/share/godot/export_templates/4.6.1.stable/ 2>/dev/null | grep -i web || true
-          echo "=== template dir contents (web-related) ==="
-          find ~/.local/share/godot/export_templates/4.6.1.stable/ -iname "*web*" 2>/dev/null || true
+          echo "=== compare threaded vs non-threaded wasm ==="
+          TPL_DIR="$HOME/.local/share/godot/export_templates/4.6.1.stable"
+          for tpl in web_release.zip web_nothreads_release.zip; do
+            echo "--- $tpl ---"
+            TMP=$(mktemp -d)
+            unzip -o -q "$TPL_DIR/$tpl" -d "$TMP"
+            ls -l "$TMP"/*.wasm
+            echo "wasm strings containing 'shared'/'atomic'/'pthread' (count):"
+            strings "$TMP"/godot.wasm | grep -c -i -E "sharedarraybuffer|__atomics|pthread_create" || echo 0
+            rm -rf "$TMP"
+          done
 
       - name: Force non-threaded template
         # Godot 4.6.1 CLI 导出会忽略 export_presets.cfg 里的 variant/thread_support=false，
-        # 仍用线程版模板（产物含 index.audio.position.worklet.js，需要 SharedArrayBuffer）。
-        # GitHub Pages 不发 COOP/COEP 头，线程版无法运行。这里显式把 custom_template/release
-        # 指向 runner 上的非线程模板 web_nothreads_release.zip，强制产出非线程版。
+        # 仍用线程版模板（需 SharedArrayBuffer，GitHub Pages 无 COOP/COEP 头无法运行）。
+        # 显式把 custom_template/release 指向 runner 上的非线程模板，强制产出非线程版。
         run: |
           NO_THREADS_TPL="$HOME/.local/share/godot/export_templates/4.6.1.stable/web_nothreads_release.zip"
           if [ ! -f "$NO_THREADS_TPL" ]; then
             echo "ERROR: non-threaded template not found at $NO_THREADS_TPL"
             exit 1
           fi
-          echo "Using non-threaded template: $NO_THREADS_TPL"
-          echo "=== inspect template contents ==="
-          unzip -l "$NO_THREADS_TPL" | head -20
-          echo "=== template's index.js thread markers ==="
-          TMPDIR=$(mktemp -d)
-          unzip -o -q "$NO_THREADS_TPL" -d "$TMPDIR"
-          for f in "$TMPDIR"/*.js; do
-            echo "--- $f ---"
-            grep -c "SharedArrayBuffer" "$f" 2>/dev/null || echo "0"
-            grep -c "pthread" "$f" 2>/dev/null || echo "0"
-          done
           sed -i "s|^custom_template/release=.*|custom_template/release=\"$NO_THREADS_TPL\"|" export_presets.cfg
           grep "custom_template" export_presets.cfg
 
@@ -83,11 +80,8 @@ jobs:
           godot --headless --path . --export-release "Web" "dist/index.html" 2>&1 | tee export.log
           echo "=== dist contents ==="
           ls -la dist/
-          echo "=== thread markers in index.js (expect 0 for non-threaded) ==="
-          grep -c "SharedArrayBuffer" dist/index.js || true
-          grep -c "pthread" dist/index.js || true
-          echo "=== audio.position.worklet present? (only in threaded) ==="
-          ls dist/index.audio.position.worklet.js 2>/dev/null && echo "THREADED BUILD" || echo "no position worklet (non-threaded OK)"
+          echo "=== exported wasm thread markers (expect 0 for non-threaded) ==="
+          strings dist/index.wasm | grep -c -i -E "sharedarraybuffer|__atomics|pthread_create" || echo 0
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
