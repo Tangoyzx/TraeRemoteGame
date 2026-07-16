@@ -64,6 +64,16 @@ jobs:
             exit 1
           fi
           echo "Using non-threaded template: $NO_THREADS_TPL"
+          echo "=== inspect template contents ==="
+          unzip -l "$NO_THREADS_TPL" | head -20
+          echo "=== template's index.js thread markers ==="
+          TMPDIR=$(mktemp -d)
+          unzip -o -q "$NO_THREADS_TPL" -d "$TMPDIR"
+          for f in "$TMPDIR"/*.js; do
+            echo "--- $f ---"
+            grep -c "SharedArrayBuffer" "$f" 2>/dev/null || echo "0"
+            grep -c "pthread" "$f" 2>/dev/null || echo "0"
+          done
           sed -i "s|^custom_template/release=.*|custom_template/release=\"$NO_THREADS_TPL\"|" export_presets.cfg
           grep "custom_template" export_presets.cfg
 
