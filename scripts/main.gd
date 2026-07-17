@@ -85,10 +85,13 @@ const BOSS_CONFIGS := {
 		"outline_color": Color(1.0, 0.55, 0.55, 1.0),
 	},
 }
-# Boss 生成排程:固定时间点从 pool 随机选一个生成。
-const BOSS_SPAWN_SCHEDULE := [
-	{"time": 60.0, "pool": ["big_brother"]},
-]
+# Boss 生成池:每次到点从池中随机选一个生成。
+const BOSS_SPAWN_POOL := ["big_brother"]
+# Boss 生成时机:第一个 boss 在游戏开始后 BOSS_FIRST_SPAWN_DELAY 秒生成
+# (相当于把第 0 秒当作"上一只 boss 刚死");之后每只 boss 死亡后再过
+# BOSS_NEXT_SPAWN_DELAY 秒生成下一只,同一时间最多存在一只 boss。
+const BOSS_FIRST_SPAWN_DELAY := 60.0
+const BOSS_NEXT_SPAWN_DELAY := 180.0
 const BOSS_SPAWN_DISTANCE := 360.0  # 生成在玩家可见区外此距离处
 const UPGRADE_OPTIONS := {
 	"auto_shooter": {
@@ -148,9 +151,16 @@ var _spawn_budgets := {}
 var _acquired_upgrades := {}
 var _stat_stacks := {}
 var _unlocked_weapons := []
-var _boss_spawn_index := 0
 var _boss_intro
 var _boss_name_label: Label
+# 当前存活 boss 引用;为空表示当前没有 boss。
+var _active_boss = null
+# 下一个 boss 的生成时间(基于 elapsed_seconds)。
+var _next_boss_spawn_time := BOSS_FIRST_SPAWN_DELAY
+# Boss 血条 UI(屏幕顶部居中)。
+var _boss_health_container: CenterContainer
+var _boss_health_name_label: Label
+var _boss_health_bar: ProgressBar
 
 
 func _ready() -> void:
@@ -183,6 +193,7 @@ func _process(delta: float) -> void:
 		camera.global_position = _clamp_to_map(player.global_position)
 	_update_enemy_spawns(delta)
 	_update_boss_spawns()
+	_update_boss_health_bar()
 
 
 func _build_world() -> void:
@@ -307,6 +318,8 @@ func _build_ui() -> void:
 	_boss_name_label.process_mode = Node.PROCESS_MODE_ALWAYS
 	ui_layer.add_child(_boss_name_label)
 
+	_build_boss_health_bar()
+
 	_build_level_up_ui()
 
 
@@ -352,6 +365,77 @@ func _build_level_up_ui() -> void:
 	level_up_options_box.add_theme_constant_override("separation", 28)
 	level_up_options_box.process_mode = Node.PROCESS_MODE_ALWAYS
 	content.add_child(level_up_options_box)
+
+
+# Boss 血条:屏幕顶部居中,显示当前存活 boss 的名字与血量。
+# process_mode = ALWAYS,确保 boss 过场暂停期间血条仍可见。
+func _build_boss_health_bar() -> void:
+	_boss_health_container = CenterContainer.new()
+	_boss_health_container.name = "BossHealthContainer"
+	_boss_health_container.visible = false
+	_boss_health_container.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_boss_health_container.offset_top = 64.0
+	_boss_health_container.offset_bottom = 130.0
+	_boss_health_container.process_mode = Node.PROCESS_MODE_ALWAYS
+	ui_layer.add_child(_boss_health_container)
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "VBox"
+	vbox.add_theme_constant_override("separation", 4)
+	vbox.process_mode = Node.PROCESS_MODE_ALWAYS
+	_boss_health_container.add_child(vbox)
+
+	_boss_health_name_label = Label.new()
+	_boss_health_name_label.name = "BossName"
+	_boss_health_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_boss_health_name_label.add_theme_font_size_override("font_size", 22)
+	vbox.add_child(_boss_health_name_label)
+
+	_boss_health_bar = ProgressBar.new()
+	_boss_health_bar.name = "HealthBar"
+	_boss_health_bar.custom_minimum_size = Vector2(420, 22)
+	_boss_health_bar.min_value = 0.0
+	_boss_health_bar.max_value = 100.0
+	_boss_health_bar.value = 100.0
+	_boss_health_bar.show_percentage = false
+	_boss_health_bar.process_mode = Node.PROCESS_MODE_ALWAYS
+
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.08, 0.08, 0.08, 0.88)
+	bg.set_border_width_all(2)
+	bg.border_color = Color(0.0, 0.0, 0.0, 0.9)
+	bg.set_corner_radius_all(4)
+	_boss_health_bar.add_theme_stylebox_override("background", bg)
+
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(0.85, 0.18, 0.22, 1.0)
+	fill.set_corner_radius_all(3)
+	_boss_health_bar.add_theme_stylebox_override("fill", fill)
+	vbox.add_child(_boss_health_bar)
+
+
+func _show_boss_health_bar(boss) -> void:
+	if _boss_health_container == null or boss == null:
+		return
+	_boss_health_name_label.text = str(boss.boss_name)
+	_boss_health_bar.max_value = float(boss.max_hp)
+	_boss_health_bar.value = float(boss.hp)
+	_boss_health_container.visible = true
+
+
+func _hide_boss_health_bar() -> void:
+	if _boss_health_container != null:
+		_boss_health_container.visible = false
+
+
+# 每帧同步血条数值;boss 失效时自动隐藏(兜底,正常死亡走 _on_boss_died)。
+func _update_boss_health_bar() -> void:
+	if _boss_health_container == null or not _boss_health_container.visible:
+		return
+	if _active_boss == null or not is_instance_valid(_active_boss):
+		_hide_boss_health_bar()
+		return
+	_boss_health_bar.value = float(_active_boss.hp)
 
 
 func _init_spawn_budgets() -> void:
@@ -435,22 +519,24 @@ func _on_enemy_died(enemy) -> void:
 
 
 # === Boss 生成与出场过场 ===
-# 每帧检查是否到下一个排程时间点。过场进行中不再触发新 boss。
+# 第一个 boss 在游戏开始 BOSS_FIRST_SPAWN_DELAY 秒后生成;之后每只 boss
+# 死亡后再过 BOSS_NEXT_SPAWN_DELAY 秒生成下一只。过场进行中或仍有 boss
+# 存活时不安排新生成,避免同时出现多只 boss。
 func _update_boss_spawns() -> void:
 	if _boss_intro != null:
 		return
-	if _boss_spawn_index >= BOSS_SPAWN_SCHEDULE.size():
+	# 当前还有 boss 存活,不安排新的生成
+	if _active_boss != null and is_instance_valid(_active_boss):
 		return
-	var entry: Dictionary = BOSS_SPAWN_SCHEDULE[_boss_spawn_index]
-	if elapsed_seconds < float(entry["time"]):
+	if _active_boss != null:
+		# 引用已失效但未清理:做兜底,等下一帧再判断
+		_active_boss = null
+	if elapsed_seconds < _next_boss_spawn_time:
 		return
-	var pool: Array = entry["pool"]
-	if pool.is_empty():
-		_boss_spawn_index += 1
+	if BOSS_SPAWN_POOL.is_empty():
 		return
-	var boss_type: String = str(pool[randi() % pool.size()])
+	var boss_type: String = str(BOSS_SPAWN_POOL[randi() % BOSS_SPAWN_POOL.size()])
 	_spawn_boss(boss_type)
-	_boss_spawn_index += 1
 
 
 func _spawn_boss(boss_type: String) -> void:
@@ -461,9 +547,19 @@ func _spawn_boss(boss_type: String) -> void:
 	boss.global_position = _get_boss_spawn_position()
 	boss.target = player
 	boss.died.connect(_on_enemy_died)
+	boss.died.connect(_on_boss_died)
 	enemies_layer.add_child(boss)
+	_active_boss = boss
+	_show_boss_health_bar(boss)
 	# 启动过场:暂停全树 → 镜头缓动到 boss → 显示名字+震动 → 回到玩家 → 解暂停
 	_start_boss_intro(boss)
+
+
+# Boss 死亡:清理引用、隐藏血条,并从当前时间起安排下一只 boss 的生成。
+func _on_boss_died(boss) -> void:
+	_active_boss = null
+	_hide_boss_health_bar()
+	_next_boss_spawn_time = elapsed_seconds + BOSS_NEXT_SPAWN_DELAY
 
 
 # Boss 生成在玩家可见区外 BOSS_SPAWN_DISTANCE 处,在地图范围内 clamp。
@@ -730,6 +826,7 @@ func _on_player_died() -> void:
 		_boss_intro = null
 	if _boss_name_label != null:
 		_boss_name_label.visible = false
+	_hide_boss_health_bar()
 	get_tree().paused = false
 	if level_up_overlay != null:
 		level_up_overlay.visible = false
