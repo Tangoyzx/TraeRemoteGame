@@ -1,0 +1,128 @@
+name: Deploy Godot Web to Tencent Cloud
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tencent-cloud
+  cancel-in-progress: false
+
+jobs:
+  export-and-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      TENCENT_HOST: ${{ secrets.TENCENT_HOST }}
+      TENCENT_SSH_PORT: ${{ secrets.TENCENT_SSH_PORT }}
+      TENCENT_SSH_USER: ${{ secrets.TENCENT_SSH_USER }}
+      TENCENT_SSH_KEY: ${{ secrets.TENCENT_SSH_KEY }}
+      TENCENT_DEPLOY_PATH: ${{ secrets.TENCENT_DEPLOY_PATH }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.6.1
+          use-dotnet: false
+          include-templates: true
+
+      - name: Check Godot version
+        run: godot --version
+
+      - name: Import project once
+        run: |
+          godot --headless --path . --import --quit
+
+      - name: Export Web
+        run: |
+          mkdir -p dist
+          godot --headless --path . --export-release "Web" "dist/index.html"
+
+      - name: Gzip-precompress large assets
+        run: |
+          # Keep this output shape in sync with the GitHub Pages workflow.
+          # The custom HTML shell fetches index.wasm.gz and decompresses it in the browser.
+          set -euo pipefail
+          cd dist
+          gzip -9 -k -f index.wasm
+          echo "index.wasm -> $(du -h index.wasm.gz | cut -f1)"
+          rm -f index.wasm
+          ls -lh
+
+      - name: Validate Web export artifact
+        run: |
+          set -euo pipefail
+          test -f dist/index.html
+          test -f dist/index.js
+          test -f dist/index.pck
+          test -f dist/index.wasm.gz
+          test ! -f dist/index.wasm
+
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+
+          : "${TENCENT_HOST:?Missing GitHub Secret: TENCENT_HOST}"
+          : "${TENCENT_SSH_USER:?Missing GitHub Secret: TENCENT_SSH_USER}"
+          : "${TENCENT_SSH_KEY:?Missing GitHub Secret: TENCENT_SSH_KEY}"
+
+          SSH_PORT="${TENCENT_SSH_PORT:-22}"
+
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$TENCENT_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/tencent_cloud_deploy_key"
+          chmod 600 "$HOME/.ssh/tencent_cloud_deploy_key"
+
+          ssh-keyscan -p "$SSH_PORT" -H "$TENCENT_HOST" >> "$HOME/.ssh/known_hosts"
+
+      - name: Deploy to Tencent Cloud Lighthouse
+        run: |
+          set -euo pipefail
+
+          SSH_HOST="$TENCENT_HOST"
+          SSH_PORT="${TENCENT_SSH_PORT:-22}"
+          SSH_USER="$TENCENT_SSH_USER"
+          DEPLOY_PATH="${TENCENT_DEPLOY_PATH:-/www/wwwroot/trae-remote-game}"
+          RELEASE="${GITHUB_SHA::12}"
+          SSH_OPTS="-i ${HOME}/.ssh/tencent_cloud_deploy_key -p ${SSH_PORT} -o StrictHostKeyChecking=yes"
+
+          echo "Deploying release ${RELEASE} to ${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}"
+
+          ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" bash -se -- "$DEPLOY_PATH" "$RELEASE" <<'EOF'
+          set -euo pipefail
+          DEPLOY_PATH="$1"
+          RELEASE="$2"
+
+          mkdir -p "$DEPLOY_PATH/releases/$RELEASE"
+          EOF
+
+          rsync -az --delete \
+            -e "ssh ${SSH_OPTS}" \
+            dist/ "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/releases/${RELEASE}/"
+
+          ssh $SSH_OPTS "${SSH_USER}@${SSH_HOST}" bash -se -- "$DEPLOY_PATH" "$RELEASE" <<'EOF'
+          set -euo pipefail
+          DEPLOY_PATH="$1"
+          RELEASE="$2"
+
+          test -f "$DEPLOY_PATH/releases/$RELEASE/index.html"
+          test -f "$DEPLOY_PATH/releases/$RELEASE/index.js"
+          test -f "$DEPLOY_PATH/releases/$RELEASE/index.pck"
+          test -f "$DEPLOY_PATH/releases/$RELEASE/index.wasm.gz"
+
+          touch "$DEPLOY_PATH/releases/$RELEASE"
+          ln -sfn "$DEPLOY_PATH/releases/$RELEASE" "$DEPLOY_PATH/current.tmp"
+          mv -Tf "$DEPLOY_PATH/current.tmp" "$DEPLOY_PATH/current"
+
+          cd "$DEPLOY_PATH/releases"
+          ls -1dt */ 2>/dev/null | tail -n +6 | xargs -r rm -rf --
+          EOF

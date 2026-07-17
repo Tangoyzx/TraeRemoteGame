@@ -100,3 +100,114 @@ Local export output is ignored by Git. The normal publishing flow can rely on Gi
 6. Open the Pages URL after the workflow succeeds.
 
 The workflow uses `chickensoft-games/setup-godot@v2` to prepare Godot 4.6.1 and export templates on GitHub's temporary Ubuntu runner.
+
+## Tencent Cloud Lighthouse deployment
+
+This repository also includes an optional workflow for deploying the same Godot Web export to a Tencent Cloud Lighthouse server through SSH and `rsync`:
+
+```text
+.github/workflows/deploy-tencent.yml
+```
+
+The server only needs to host static files, for example with Nginx in the BT Linux Panel. Godot does not need to run on the server.
+
+### GitHub Secrets
+
+Configure these repository secrets before running `Deploy Godot Web to Tencent Cloud`:
+
+| Secret | Required | Example / default | Description |
+| --- | --- | --- | --- |
+| `TENCENT_HOST` | Yes | `1.2.3.4` | Tencent Cloud Lighthouse public IP. |
+| `TENCENT_SSH_PORT` | No | `22` | SSH port. |
+| `TENCENT_SSH_USER` | Yes | `deploy` | SSH user used by GitHub Actions. |
+| `TENCENT_SSH_KEY` | Yes | private key text | Private key matching the server user's `authorized_keys`. |
+| `TENCENT_DEPLOY_PATH` | No | `/www/wwwroot/trae-remote-game` | Deployment root on the server. |
+
+The workflow runs on pushes to `main` and on manual `workflow_dispatch`. It exports the Web build, keeps `index.wasm.gz`, removes the raw `index.wasm`, uploads files to:
+
+```text
+$TENCENT_DEPLOY_PATH/releases/<short-git-sha>/
+```
+
+Then it switches:
+
+```text
+$TENCENT_DEPLOY_PATH/current -> $TENCENT_DEPLOY_PATH/releases/<short-git-sha>
+```
+
+The newest 5 releases are retained for rollback.
+
+### Server preparation
+
+Recommended one-time setup with a dedicated deploy user:
+
+```bash
+sudo useradd -m -s /bin/bash deploy
+sudo mkdir -p /home/deploy/.ssh
+sudo chmod 700 /home/deploy/.ssh
+sudo touch /home/deploy/.ssh/authorized_keys
+sudo chmod 600 /home/deploy/.ssh/authorized_keys
+sudo chown -R deploy:deploy /home/deploy/.ssh
+
+sudo mkdir -p /www/wwwroot/trae-remote-game/releases
+sudo chown -R deploy:deploy /www/wwwroot/trae-remote-game
+```
+
+Add the GitHub Actions public key to:
+
+```text
+/home/deploy/.ssh/authorized_keys
+```
+
+Make sure the server has `rsync` available and the Tencent Cloud firewall allows inbound SSH and HTTP traffic.
+
+### Nginx static site root
+
+Point the BT/Nginx site root to:
+
+```text
+/www/wwwroot/trae-remote-game/current
+```
+
+The custom Web shell fetches `index.wasm.gz` and decompresses it in the browser, so the server should serve that file as a normal static asset and should not add `Content-Encoding: gzip` to it.
+
+Minimal Nginx server block:
+
+```nginx
+server {
+    listen 80;
+    server_name _;
+
+    root /www/wwwroot/trae-remote-game/current;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location ~* \.wasm$ {
+        default_type application/wasm;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location ~* \.wasm\.gz$ {
+        default_type application/gzip;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location ~* \.(js|pck|png|jpg|jpeg|gif|svg|ico|css)$ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+}
+```
+
+Manual rollback example:
+
+```bash
+cd /www/wwwroot/trae-remote-game
+ln -sfn releases/<previous-sha> current
+```
