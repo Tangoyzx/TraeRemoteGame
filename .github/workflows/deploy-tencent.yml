@@ -66,6 +66,7 @@ jobs:
           test -f dist/index.pck
           test -f dist/index.wasm.gz
           test ! -f dist/index.wasm
+          grep -q 'DecompressionStream' dist/index.html
 
       - name: Configure SSH
         run: |
