@@ -45,6 +45,13 @@ $GODOT_HEAD_INCLUDE
   function fetchAndDecompress(url) {
     return fetch(url).then(function (r) {
       if (!r.ok) throw new Error(url + " HTTP " + r.status);
+      // 服务器（如 BT 面板/Nginx 默认 gzip）可能对 .wasm.gz 自动加
+      // Content-Encoding: gzip，浏览器已在 fetch 层解压，r.body 是原始 wasm 字节。
+      // 此时不能再 DecompressionStream 二次解压，否则会失败并触发 fallback。
+      var enc = (r.headers.get("Content-Encoding") || "").toLowerCase();
+      if (enc.indexOf("gzip") !== -1) {
+        return r.body;
+      }
       return r.body.pipeThrough(new DecompressionStream("gzip"));
     });
   }
@@ -62,7 +69,7 @@ $GODOT_HEAD_INCLUDE
     ? fetchAndDecompress(BAS + ".wasm.gz")
         .then(function (stream) { return new Response(stream).arrayBuffer(); })
         .catch(function (e) {
-          log("gzip miss, fallback .wasm");
+          log("gzip miss: " + (e && e.message ? e.message : e) + " | fallback .wasm");
           return fetchWasm(BAS + ".wasm");
         })
     : fetchWasm(BAS + ".wasm");
