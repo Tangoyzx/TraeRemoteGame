@@ -1,6 +1,6 @@
 # Trae Remote Game Demo
 
-A Godot 4.6.1 web game demo used to verify this workflow:
+A Godot 4.7.1 web game demo used to verify this workflow:
 
 Godot project source -> GitHub Actions cloud export -> GitHub Pages.
 
@@ -72,7 +72,7 @@ web/custom_shell.html   Custom Godot web shell
 The local Godot executable is expected at:
 
 ```text
-D:\GodotEngine\Godot_v4.6.1-stable_win64_console.exe
+D:\GodotEngine\Godot_v4.7.1-stable_win64_console.exe
 ```
 
 Check the local environment:
@@ -99,7 +99,7 @@ Local export output is ignored by Git. The normal publishing flow can rely on Gi
 5. Push to `main` or manually run `Deploy Godot Web to GitHub Pages`.
 6. Open the Pages URL after the workflow succeeds.
 
-The workflow uses `chickensoft-games/setup-godot@v2` to prepare Godot 4.6.1 and export templates on GitHub's temporary Ubuntu runner.
+The workflow uses `chickensoft-games/setup-godot@v2` to prepare Godot 4.7.1 and export templates on GitHub's temporary Ubuntu runner.
 
 ## Tencent Cloud Lighthouse deployment
 

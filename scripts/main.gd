@@ -15,10 +15,12 @@ const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
 const MAP_SIZE := Vector2(12800.0, 7200.0)
 const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 # 各等级升级所需累计积分(下标 = 等级 - 1)。超出此列表的等级不再触发升级。
-const LEVEL_REQUIRED_SCORES := [0, 20, 100, 200, 99999]
+# TODO(临时调试): 第3级 100->40, 第4级 200->60, 方便测试后期等级。
+#                    调试完成后恢复为 [0, 20, 100, 200, 99999]。
+const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 99999]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.1.11"
+const GAME_VERSION := "v1.1.12"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0

@@ -1,4 +1,4 @@
-class_name DroneMinion
+﻿class_name DroneMinion
 extends Node2D
 
 const StatMath := preload("res://scripts/stat_math.gd")
@@ -90,9 +90,10 @@ func _recompute() -> void:
 	# PIERCE:整数型,每层 +1 次爆炸后存活。
 	_pierce = _stacks(StatMath.Stat.PIERCE)
 
-	# 同步给已存在的小兵。
+	# 同步给已存在的小兵(跳过本帧已 queue_free 但尚未从 _minions 清理的实例)。
 	for minion in _minions:
-		minion.sync_params(_detection_radius, _explosion_radius, _explosion_damage, _track_speed, _pierce, combat_effects)
+		if is_instance_valid(minion):
+			minion.sync_params(_detection_radius, _explosion_radius, _explosion_damage, _track_speed, _pierce, combat_effects)
 
 
 func _process(delta: float) -> void:
@@ -114,11 +115,20 @@ func _process(delta: float) -> void:
 	else:
 		_spawn_timer = 0.0
 	# 推进每个小兵的状态机。
+	# 速度倍数:高 ID 小兵若与任意低 ID 小兵角距过近(< 60°)则降速 50%,避免环绕堆叠。
 	var n := _minions.size()
 	for i in n:
 		var minion = _minions[i]
-		var orbit_a := (_angle + float(i) * TAU / float(n)) if n > 0 else _angle
-		minion.tick(delta, player.global_position, orbit_a, _orbit_radius, enemies_layer)
+		var speed_mult := 1.0
+		if i > 0 and n > 1:
+			for j in i:
+				var other = _minions[j]
+				if is_instance_valid(other):
+					var ang_diff := absf(angle_difference(minion._orbit_angle, other._orbit_angle))
+					if ang_diff < deg_to_rad(60.0):
+						speed_mult = 0.5
+						break
+		minion.tick(delta, player.global_position, _orbit_speed * speed_mult, _orbit_radius, enemies_layer)
 
 
 func _spawn_minion() -> void:
@@ -126,6 +136,9 @@ func _spawn_minion() -> void:
 	minion.setup(_detection_radius, _explosion_radius, _explosion_damage, _track_speed, _pierce, combat_effects, enemies_layer)
 	add_child(minion)
 	minion.global_position = player.global_position
+	# 初始轨道角度:在现有小兵基础上均匀分布,避免与已有小兵同角度。
+	var n_after := _minions.size() + 1
+	minion._orbit_angle = _angle + float(n_after - 1) * TAU / float(n_after)
 	_minions.append(minion)
 
 
@@ -162,6 +175,7 @@ class Minion:
 	var _cached_fill := DEFAULT_FILL
 	var _cached_edge := DEFAULT_EDGE
 	var _shape: CircleShape2D
+	var _orbit_angle := 0.0  # 小兵自己的轨道角度(由父节点初始化,ORBITING 时自行推进)
 
 
 	func _ready() -> void:
@@ -194,28 +208,26 @@ class Minion:
 
 
 	# 由父节点每帧调用:推进状态机,并检查是否已 overlap 敌人(补偿 area_entered 时序)。
-	func tick(delta: float, player_pos: Vector2, orbit_angle: float, orbit_radius: float, enemies: Node2D) -> void:
+	# orbit_speed 为该小兵本帧的轨道角速度(父节点按需降速以避免多小兵堆叠)。
+	func tick(delta: float, player_pos: Vector2, orbit_speed: float, orbit_radius: float, enemies: Node2D) -> void:
 		enemies_layer = enemies
-		_update_state(delta, player_pos, orbit_angle, orbit_radius)
-		if _state == STATE_TRACKING:
+		_update_state(delta, player_pos, orbit_speed, orbit_radius)
+		if _state == STATE_TRACKING or _state == STATE_RETURNING:
 			_check_overlap_explosion()
 		_refresh_color()
 
 
-	func _update_state(delta: float, player_pos: Vector2, orbit_angle: float, orbit_radius: float) -> void:
+	func _update_state(delta: float, player_pos: Vector2, orbit_speed: float, orbit_radius: float) -> void:
 		match _state:
 			STATE_ORBITING:
-				global_position = player_pos + Vector2.RIGHT.rotated(orbit_angle) * orbit_radius
+				_orbit_angle += orbit_speed * delta
+				global_position = player_pos + Vector2.RIGHT.rotated(_orbit_angle) * orbit_radius
 				_target = _find_nearest_enemy_within(detection_radius)
 				if _target != null:
 					_state = STATE_TRACKING
 			STATE_TRACKING:
-				# 目标失效或离玩家太远 -> 返回。
+				# 仅当目标失效(死亡/销毁)时才返回;不再因离玩家太远而中断追踪。
 				if _target == null or not is_instance_valid(_target) or _target.hp <= 0.0:
-					_target = null
-					_state = STATE_RETURNING
-					return
-				if global_position.distance_to(player_pos) > DroneMinion.TRACK_LOSE_DISTANCE:
 					_target = null
 					_state = STATE_RETURNING
 					return
@@ -223,11 +235,19 @@ class Minion:
 				if to_target.length() > 1.0:
 					global_position += to_target.normalized() * track_speed * delta
 			STATE_RETURNING:
-				var to_player: Vector2 = player_pos - global_position
-				if to_player.length() <= orbit_radius * 0.5:
+				# 朝环绕圈上该小兵对应的角度位置移动,而不是冲向玩家中心。
+				# 到达后切换到 ORBITING 时位置天然吻合,避免闪现。
+				# RETURNING 不主动索敌(避免与 TRACKING 频繁切换导致抖动),但碰到敌人仍会爆炸
+				# (见 _on_area_entered / _check_overlap_explosion)。
+				var orbit_pos: Vector2 = player_pos + Vector2.RIGHT.rotated(_orbit_angle) * orbit_radius
+				var to_orbit: Vector2 = orbit_pos - global_position
+				var dist_to_orbit := to_orbit.length()
+				var step := DroneMinion.BASE_RETURN_SPEED * delta
+				if dist_to_orbit <= step + 1.0:
+					global_position = orbit_pos
 					_state = STATE_ORBITING
 				else:
-					global_position += to_player.normalized() * DroneMinion.BASE_RETURN_SPEED * delta
+					global_position += to_orbit.normalized() * step
 
 
 	# 在 detection_radius 内找最近的敌人(以小兵自己为中心)。
@@ -246,11 +266,12 @@ class Minion:
 
 
 	func _on_area_entered(area: Area2D) -> void:
-		if _state == STATE_TRACKING and area.is_in_group("enemy") and is_instance_valid(area):
+		# TRACKING 主动追击、RETURNING 专心回归不索敌,但碰到了仍要爆炸。
+		if (_state == STATE_TRACKING or _state == STATE_RETURNING) and area.is_in_group("enemy") and is_instance_valid(area):
 			_explode(area)
 
 
-	# 补偿:area_entered 只在首次进入时触发,TRACKING 时每帧检查是否已重叠。
+	# 补偿:area_entered 只在首次进入时触发,TRACKING/RETURNING 时每帧检查是否已重叠。
 	func _check_overlap_explosion() -> void:
 		for area in get_overlapping_areas():
 			if area.is_in_group("enemy") and is_instance_valid(area):

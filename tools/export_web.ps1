@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$GodotExe = "D:\GodotEngine\Godot_v4.6.1-stable_win64_console.exe"
+$GodotExe = "D:\GodotEngine\Godot_v4.7.1-stable_win64_console.exe"
 $DistDir = Join-Path (Get-Location) "dist"
 $ExportPath = Join-Path $DistDir "index.html"
 

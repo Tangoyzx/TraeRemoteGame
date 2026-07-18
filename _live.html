@@ -35,7 +35,7 @@
   // 优先加载预压缩产物 (.wasm.gz)，浏览器端用 DecompressionStream("gzip") 解压。
   // gzip 在所有支持 DecompressionStream 的浏览器里都确定可用（brotli 实现不统一）。
   // 回退链：.wasm.gz 解压 → 失败则直接 fetch .wasm（兼容未预压缩环境）。
-  // 注意：Godot 4.6 自定义 shell 不支持 $GODOT_BASENAME，从 index.js（如 "index.js"）推导。
+  // 注意：Godot 4.7 自定义 shell 不支持 $GODOT_BASENAME，从 index.js（如 "index.js"）推导。
   var GURL = "index.js";
   var BAS = GURL.replace(/\.js$/, "");
 
@@ -114,7 +114,7 @@
 
   wasmPromise.then(function (wasmBuf) {
     log("wasm ready " + (wasmBuf.byteLength / 1048576).toFixed(1) + "MB");
-    // Godot 4.6 的 Engine.startGame() 会在 init() 内部固定 fetch(BAS + ".wasm")。
+    // Godot 4.7 的 Engine.startGame() 会在 init() 内部固定 fetch(BAS + ".wasm")。
     // Pages 产物为了绕过单文件大小限制只保留 index.wasm.gz，因此这里临时拦截
     // 对 index.wasm 的请求，把已解压的 wasm buffer 作为 application/wasm Response 返回。
     var originalFetch = window.fetch.bind(window);
