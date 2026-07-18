@@ -8,7 +8,7 @@ const BASE_SPAWN_INTERVAL := 2.0
 const BASE_MAX_MINIONS := 1
 const BASE_ORBIT_RADIUS := 150.0
 const BASE_ORBIT_SPEED := 3.0
-const BASE_DETECTION_RADIUS := 100.0
+const BASE_DETECTION_RADIUS := 200.0
 const BASE_EXPLOSION_RADIUS := 100.0
 const BASE_EXPLOSION_DAMAGE := 100.0
 const BASE_TRACK_SPEED := 320.0
@@ -99,16 +99,20 @@ func _process(delta: float) -> void:
 	if player == null or not is_instance_valid(player):
 		return
 	_angle += _orbit_speed * delta
-	_spawn_timer += delta
-	if _spawn_timer >= _spawn_interval and _minions.size() < _max_minions:
-		_spawn_timer = 0.0
-		_spawn_minion()
 	# 清理已销毁的小兵(queue_free 后下一帧 is_instance_valid 变 false)。
 	var alive := []
 	for minion in _minions:
 		if is_instance_valid(minion):
 			alive.append(minion)
 	_minions = alive
+	# 生成倒计时:仅在有空位时推进;满员时重置,空位出现后从 0 开始计完整间隔。
+	if _minions.size() < _max_minions:
+		_spawn_timer += delta
+		if _spawn_timer >= _spawn_interval:
+			_spawn_timer = 0.0
+			_spawn_minion()
+	else:
+		_spawn_timer = 0.0
 	# 推进每个小兵的状态机。
 	var n := _minions.size()
 	for i in n:
@@ -243,28 +247,30 @@ class Minion:
 
 	func _on_area_entered(area: Area2D) -> void:
 		if _state == STATE_TRACKING and area.is_in_group("enemy") and is_instance_valid(area):
-			_explode()
+			_explode(area)
 
 
 	# 补偿:area_entered 只在首次进入时触发,TRACKING 时每帧检查是否已重叠。
 	func _check_overlap_explosion() -> void:
 		for area in get_overlapping_areas():
 			if area.is_in_group("enemy") and is_instance_valid(area):
-				_explode()
+				_explode(area)
 				return
 
 
-	func _explode() -> void:
-		# 范围伤害:遍历 enemies_layer,在爆炸半径内的敌人统一结算。
+	# 范围伤害:首个被碰撞目标(primary)吃全额,范围内其他敌人吃半额。
+	func _explode(primary_target = null) -> void:
 		if enemies_layer != null:
 			var radius_sq := explosion_radius * explosion_radius
+			var secondary_damage := explosion_damage * 0.5
 			for child in enemies_layer.get_children():
 				if child.is_in_group("enemy") and is_instance_valid(child) and child.hp > 0.0:
 					if global_position.distance_squared_to(child.global_position) <= radius_sq:
+						var dmg := explosion_damage if child == primary_target else secondary_damage
 						if combat_effects != null and is_instance_valid(combat_effects):
-							combat_effects.apply_weapon_hit(child, explosion_damage, global_position, {"source": "drone_minion"})
+							combat_effects.apply_weapon_hit(child, dmg, global_position, {"source": "drone_minion"})
 						else:
-							child.take_damage(explosion_damage)
+							child.take_damage(dmg)
 		_spawn_explosion_flash()
 		# PIERCE:还能再炸几次?不能则销毁。
 		if pierce > 0:
