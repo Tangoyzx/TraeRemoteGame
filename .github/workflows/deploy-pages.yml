@@ -61,6 +61,29 @@ jobs:
           mkdir -p dist
           godot --headless --path . --export-release "Web" "dist/index.html"
 
+      - name: Gzip-precompress wasm
+        # 与 deploy-tencent.yml 保持一致：预压缩 .wasm -> .wasm.gz 并删除原始 .wasm。
+        # custom_shell.html 会先 fetch .wasm.gz，通过 DecompressionStream("gzip") 解压；
+        # 这样国内用户从 GitHub Pages 下载体量从 ~37MB 降到 ~10MB，避免卡死在加载界面。
+        # GitHub Pages 不会给 .wasm.gz 自动加 Content-Encoding: gzip，shell 已正确处理该情况。
+        run: |
+          set -euo pipefail
+          cd dist
+          gzip -9 -k -f index.wasm
+          echo "index.wasm -> $(du -h index.wasm.gz | cut -f1)"
+          rm -f index.wasm
+          ls -lh
+
+      - name: Validate Web export artifact
+        run: |
+          set -euo pipefail
+          test -f dist/index.html
+          test -f dist/index.js
+          test -f dist/index.pck
+          test -f dist/index.wasm.gz
+          test ! -f dist/index.wasm
+          grep -q 'DecompressionStream' dist/index.html
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:

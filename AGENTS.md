@@ -8,69 +8,11 @@
 ## 规则 1:直接在 `main` 分支上开发
 
 - **不要** 创建 `trae/agent-*`、`feature/*` 等临时分支。
-- 所有 commit 直接打到本地 `main`,然后推送到 `origin/main`(见规则 2)。
+- 所有 commit 直接打到本地 `main`,然后推送到 `origin/main`。
 - 仓库的工作流是 trunk-based,不要擅自引入分支策略。
 - 远端历史遗留的 `trae/agent-*` 分支不要再新增;若发现误建的,合并后用 `git push origin --delete <branch>` 清理。
 
-## 规则 2:推送远端的方式(实测真相,不要判断错)
-
-### 沙箱内 `git push` 命令必然失败
-
-在 Trae 云端沙箱里直接执行 `git push origin main` 会报:
-
-```
-fatal: could not read Username for 'https://github.com': terminal prompts disabled
-```
-
-**这是环境限制,不是权限拒绝**。沙箱内已验证:
-- 无 `~/.git-credentials`
-- 无 `~/.config/gh/`(`gh` CLI 未登录)
-- 无 `~/.netrc`
-- 无 credential helper
-
-### 不要犯的误判(基于实测教训)
-
-历史上 AI 在这个问题上犯过两次相反的错误,都要避免:
-
-- ❌ **错误 A**:"沙箱 push 失败 = 推不了 main,必须走 PR 流程合并"
-  → 不对。trunk-based 项目不走 PR,且远端 reflog 实测有过 `update by push` 记录。
-- ❌ **错误 B**:"Trae 平台会自动同步 main commit 到远端,不需要任何操作"
-  → 不对。实测 commit 后等 60 秒仍未同步到远端,自动同步不 100% 触发。
-
-### 正确做法
-
-当用户说"推送"或"提交到远端"时:
-
-1. 沙箱内完成 `git add` + `git commit`(这些不需要凭据,可以正常执行)。
-2. 告诉用户:commit 已完成,但**沙箱是临时的,本地拉不到这些 commit**,
-   需要用以下方式之一把改动送到远端 main:
-
-   - **方式 1(推荐)**:用户在 GitHub 网页直接编辑
-     - 适合改动很小、文件少的情况(如纯 AGENTS.md 修改、版本号 bump)
-     - 在 GitHub 网页打开对应文件,点编辑,粘贴沙箱里的最新内容,直接 commit 到 main
-     - 不需要本地环境,最简单
-   - **方式 2**:用户提供 GitHub Personal Access Token(有 `repo` 权限)
-     - agent 在沙箱里用 token 配置 git credential helper 后执行 `git push origin main`
-     - 推送完成后用户撤销 token
-     - 适合改动较大、文件多的情况
-   - **方式 3**:用户在本地终端 clone 后手动同步
-     - 用户本地:`git clone https://github.com/<owner>/<repo>`
-     - 把沙箱里的修改内容手动复制到本地(因为沙箱拉不到)
-     - 本地 `git add` + `git commit` + `git push origin main`
-     - 适合改动不大但用户想要本地审查的情况
-
-3. 不要犯错误 A 或错误 B。最诚实的表述是:
-   "沙箱里 git push 失败(无凭据),且沙箱临时用户拉不到。建议在 GitHub 网页直接编辑小改动,或提供 PAT 让沙箱帮你推。"
-
-### 已验证的事实
-
-- ❌ 沙箱内 `git push` 命令(永远失败,无凭据)
-- ❌ Trae 平台自动同步(实测不可靠,有时会推有时不会)
-- ✅ 用户在 GitHub 网页直接编辑 commit(最简单,适合小改动)
-- ✅ 用户提供 PAT,agent 在沙箱配置凭据后推送(适合大改动)
-- ❌ 不要默认用户有 Trae IDE 客户端
-
-## 规则 3:每次推送到远端前必须 bump 版本号
+## 规则 2:每次推送到远端前必须 bump 版本号
 
 ### 源位置
 
