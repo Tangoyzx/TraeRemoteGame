@@ -8,6 +8,7 @@
 |---|---|---|
 | 子弹 AutoShooter | [scripts/weapons/auto_shooter.gd](../scripts/weapons/auto_shooter.gd) | 瞄准单体直线弹 |
 | 环绕剑 OrbitSword | [scripts/weapons/orbit_sword.gd](../scripts/weapons/orbit_sword.gd) | 环绕持续碰撞 |
+| 护卫小兵 DroneMinion | [scripts/weapons/drone_minion.gd](../scripts/weapons/drone_minion.gd) | 环绕→追踪→自爆 AOE |
 
 > 子弹实体见 [scripts/projectile.gd](../scripts/projectile.gd)。
 
@@ -35,6 +36,22 @@
 | `HIT_COOLDOWN_SECONDS` | 0.45 s | [orbit_sword.gd:8](../scripts/weapons/orbit_sword.gd#L8) |
 | 剑数 | 1 | [main.gd:472-476](../scripts/main.gd#L472-L476) |
 
+### DroneMinion
+| 参数 | 值 | 来源 |
+|---|---|---|
+| `SPAWN_INTERVAL` | 2.0 s | [drone_minion.gd:7](../scripts/weapons/drone_minion.gd#L7) |
+| `MAX_MINIONS` | 1 | [drone_minion.gd:8](../scripts/weapons/drone_minion.gd#L8) |
+| `ORBIT_RADIUS` | 150.0 | [drone_minion.gd:9](../scripts/weapons/drone_minion.gd#L9) |
+| `ORBIT_SPEED` | 3.0 rad/s | [drone_minion.gd:10](../scripts/weapons/drone_minion.gd#L10) |
+| `DETECTION_RADIUS` | 100.0 | [drone_minion.gd:11](../scripts/weapons/drone_minion.gd#L11) |
+| `EXPLOSION_RADIUS` | 100.0 | [drone_minion.gd:12](../scripts/weapons/drone_minion.gd#L12) |
+| `EXPLOSION_DAMAGE` | 100 | [drone_minion.gd:13](../scripts/weapons/drone_minion.gd#L13) |
+| `TRACK_SPEED` | 320.0 | [drone_minion.gd:14](../scripts/weapons/drone_minion.gd#L14) |
+| `RETURN_SPEED` | 360.0 | [drone_minion.gd:15](../scripts/weapons/drone_minion.gd#L15) |
+| `TRACK_LOSE_DISTANCE` | 280.0 | [drone_minion.gd:17](../scripts/weapons/drone_minion.gd#L17) |
+| 爆炸后去向 | 销毁(PIERCE 可延长) | [drone_minion.gd:269-274](../scripts/weapons/drone_minion.gd#L269-L274) |
+| 追丢去向 | 返回玩家恢复环绕 | [drone_minion.gd:221-226](../scripts/weapons/drone_minion.gd#L221-L226) |
+
 ## 3. 基线 DPS 分析
 
 ### AutoShooter(单体)
@@ -56,15 +73,26 @@ DPS(环内单敌) = DAMAGE / 旋转周期 = 100 / 1.848 = 54.1
 - 群体 DPS = 54.1 × N(N = 环内敌人数,无上限)
 - 定位:**群体控制**,单敌 DPS 偏低,但群体线性放大
 
+### DroneMinion(单兵循环)
+最小循环 = 生成 2.0 s + 追踪接近 + 爆炸。追踪耗时取决于敌人距离,典型 1~2 s。
+```
+单次循环 ≈ 2.0(生成) + 1.5(追踪中位数) = 3.5 s
+DPS(单体) = EXPLOSION_DAMAGE / 循环 = 100 / 3.5 ≈ 28.6
+```
+- **爆炸覆盖** = π × 100² ≈ **31416 单位²**(AOE)
+- 群体 DPS = 28.6 × min(爆炸范围内敌人数, ∞) — 单次爆炸可同时命中密集敌群
+- **PIERCE** 每层让小兵多炸 1 次:PIERCE=1 时循环变成 2 次爆炸 / 3.5 s ≈ 57.1 DPS(单体)
+- 定位:**中近程 AOE 爆发**,单体偏弱、群体优秀
+
 ### 基线平衡结论
 
-| 场景 | AutoShooter | OrbitSword | 谁优 |
-|---|---|---|---|
-| 单体 BOSS | 90.9 | 54.1 | AutoShooter |
-| 2 敌人 | 90.9(只打 1 个) | 108.2 | OrbitSword |
-| N 敌人(N≥2) | 90.9 | 54.1×N | OrbitSword |
+| 场景 | AutoShooter | OrbitSword | DroneMinion | 谁优 |
+|---|---|---|---|---|
+| 单体 BOSS | 90.9 | 54.1 | 28.6 | AutoShooter |
+| 2 敌人(密集) | 90.9(只打 1 个) | 108.2 | 57.2(2 敌同炸) | OrbitSword |
+| N 敌人(N≥3,密集) | 90.9 | 54.1×N | 28.6×N | OrbitSword(密集时 Drone 持平) |
 
-→ **基线平衡健康**:聚焦 vs 控群的角色分工成立,无需调基线。
+> **基线平衡健康**:三武器形成"单体聚焦 / 群体持续 / 群体爆发"三角分工。DroneMinion 单体 DPS 偏低是设计取舍 — 用 AOE 爆发的瞬时清场能力补偿。若实测过弱,优先调 `TRACK_SPEED`(缩短追踪耗时)而非直接加伤害。
 
 ## 4. 通用属性 → 技能参数映射
 
@@ -92,19 +120,32 @@ DPS(环内单敌) = DAMAGE / 旋转周期 = 100 / 1.848 = 54.1
 
 > OrbitSword 的 `SPEED` 直接折叠进 `FREQUENCY`(都是"转得更快"),`DURATION` 折叠进 `AREA`(剑变长 = 覆盖更多)。这保证 7 个通用属性里 6 个对剑都有可感知效果。
 
+### DroneMinion
+| 通用属性 | 翻译 | 当前值 |
+|---|---|---|
+| `COUNT` | 小兵上限 +1(等自然生成,不立即补满) | 1 |
+| `FREQUENCY` | `SPAWN_INTERVAL` ↓ | 2.0 s |
+| `DAMAGE` | `EXPLOSION_DAMAGE` ↑ | 100 |
+| `AREA` | `DETECTION_RADIUS` ↑ + `EXPLOSION_RADIUS` ↑(双收益) | 100 / 100 |
+| `PIERCE` | 爆炸后存活次数 +1(整数型) | 0 |
+| `DURATION` | **禁用**(不入池,framework §7) | — |
+| `SPEED` | `TRACK_SPEED` ↑(追踪速度) | 320 |
+
+> DroneMinion 的 `DURATION` 禁用而非折叠:小兵无寿命概念(被消耗→重生循环),折叠进其他属性会与描述"longer life"严重不符,且禁用后 stat 池仍剩 6 项,体验可接受。`AREA` 双收益(检测+爆炸)按 k=0.85 打折。
+
 ## 5. 适配系数 `k`(校准结果)
 
 公式:`技能实际增益幅度 = 通用升级幅度 × k`
 
-| 通用属性 | AutoShooter `k` | OrbitSword `k` | 调整理由 |
-|---|---|---|---|
-| `COUNT` | 1.0 | 1.0 | 字面 +1 实体,直觉一致;失衡用稀有度 + DR 压制(见 §7) |
-| `FREQUENCY` | 1.0 | **0.95** | 剑加速额外附带视觉压制力(手感增益),微调下压 |
-| `DAMAGE` | 1.0 | 1.0 | 双方线性,天然平衡 |
-| `AREA` | 1.0 | **0.9** | 剑的 AREA 同时放大半径(覆盖)+ 剑长(命中),双重收益 |
-| `PIERCE` | 1.0 | **0.8** | 剑的 PIERCE = 命中冷却 ↓,直接提 DPS 且提覆盖,偏强 |
-| `DURATION` | 1.0 | **0.5** | 剑无寿命概念,折叠进 AREA,只取半价 |
-| `SPEED` | 1.0 | **折叠→FREQUENCY** | 不单独投放,合并进 FREQUENCY |
+| 通用属性 | AutoShooter `k` | OrbitSword `k` | DroneMinion `k` | 调整理由 |
+|---|---|---|---|---|
+| `COUNT` | 1.0 | 1.0 | 1.0 | 字面 +1 实体,直觉一致;失衡用稀有度 + DR 压制(见 §7) |
+| `FREQUENCY` | 1.0 | **0.95** | 1.0 | 剑加速额外附带视觉压制力(手感增益),微调下压;Drone 生成间隔 ↓ 是纯 DPS 增益,无需打折 |
+| `DAMAGE` | 1.0 | 1.0 | 1.0 | 双方线性,天然平衡 |
+| `AREA` | 1.0 | **0.9** | **0.85** | 剑的 AREA 双收益(半径+剑长);Drone 的 AREA 更强(检测+爆炸双 AOE),打折更狠 |
+| `PIERCE` | 1.0 | **0.8** | **0.8** | 剑的 PIERCE = 命中冷却 ↓ 直接提 DPS;Drone 的 PIERCE = 多炸 1 次 = 直接翻倍循环 DPS,偏强 |
+| `DURATION` | 1.0 | **0.5** | **禁用** | 剑折叠进 AREA 半价;Drone 无寿命概念且折叠语义不符,直接禁用 |
+| `SPEED` | 1.0 | **折叠→FREQUENCY** | 1.0 | 剑无独立 SPEED;Drone 的 TRACK_SPEED ↑ 是纯追踪效率增益(缩短循环耗时 → DPS ↑),天然线性 |
 
 ## 6. 两个用户案例的平衡分析
 

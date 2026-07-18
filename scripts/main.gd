@@ -7,6 +7,7 @@ const CombatEffectsScene := preload("res://scripts/combat_effects.gd")
 const StatMath := preload("res://scripts/stat_math.gd")
 const AutoShooterScene := preload("res://scripts/weapons/auto_shooter.gd")
 const OrbitSwordScene := preload("res://scripts/weapons/orbit_sword.gd")
+const DroneMinionScene := preload("res://scripts/weapons/drone_minion.gd")
 const BossScene := preload("res://scripts/boss.gd")
 const BossIntroScene := preload("res://scripts/boss_intro.gd")
 
@@ -108,8 +109,16 @@ const UPGRADE_OPTIONS := {
 		"image_path": "res://assets/upgrades/orbit_sword.svg",
 		"weapon_type": "orbit_sword",
 	},
+	"drone_minion": {
+		"id": "drone_minion",
+		"title": "Drone Minion",
+		"description": "Spawns minion that tracks and explodes on enemies",
+		"image_path": "res://assets/upgrades/drone_minion.svg",
+		"weapon_type": "drone_minion",
+	},
 }
 # 通用 stat 升级定义。weight 控制加权随机投放(详见 docs/skill-system-framework.md §8)。
+# desc 仅作为无武器解锁时的兜底;有武器时改用 _build_stat_description 按已解锁武器动态拼接。
 var stat_upgrade_defs := [
 	{"id": "stat_frequency", "stat": StatMath.Stat.FREQUENCY, "title": "Frequency", "desc": "Lower bullet cooldown / faster sword spin", "weight": 100},
 	{"id": "stat_damage", "stat": StatMath.Stat.DAMAGE, "title": "Damage", "desc": "Increase damage per hit", "weight": 100},
@@ -119,6 +128,45 @@ var stat_upgrade_defs := [
 	{"id": "stat_count", "stat": StatMath.Stat.COUNT, "title": "Count", "desc": "+1 bullet (multi-target) / +1 sword", "weight": 35},
 	{"id": "stat_pierce", "stat": StatMath.Stat.PIERCE, "title": "Pierce", "desc": "Bullets pierce more / sword cooldown down", "weight": 35},
 ]
+# stat × weapon_type → 该 stat 对该武器的具体效果文案。
+# 用 var 而非 const:避免 release 编译器对嵌套 Dictionary 的 enum key 类型推断失败。
+# DURATION 对 drone_minion 无意义(不入池),故此处不列 drone_minion 的 DURATION 条目。
+var STAT_DESC_PER_WEAPON := {
+	StatMath.Stat.FREQUENCY: {
+		"auto_shooter": "Bullet cooldown down",
+		"orbit_sword": "Faster sword spin",
+		"drone_minion": "Faster minion spawn",
+	},
+	StatMath.Stat.DAMAGE: {
+		"auto_shooter": "+bullet damage",
+		"orbit_sword": "+sword damage",
+		"drone_minion": "+explosion damage",
+	},
+	StatMath.Stat.AREA: {
+		"auto_shooter": "Bigger bullet",
+		"orbit_sword": "Bigger sword + orbit radius",
+		"drone_minion": "Larger detection + explosion radius",
+	},
+	StatMath.Stat.DURATION: {
+		"auto_shooter": "Longer bullet life",
+		"orbit_sword": "Longer sword",
+	},
+	StatMath.Stat.SPEED: {
+		"auto_shooter": "Faster bullets",
+		"orbit_sword": "Faster sword spin",
+		"drone_minion": "Faster minion tracking",
+	},
+	StatMath.Stat.COUNT: {
+		"auto_shooter": "+1 bullet (multi-target)",
+		"orbit_sword": "+1 sword",
+		"drone_minion": "+1 minion slot",
+	},
+	StatMath.Stat.PIERCE: {
+		"auto_shooter": "Bullets pierce more",
+		"orbit_sword": "Sword hit cooldown down",
+		"drone_minion": "Minion survives +1 explosion",
+	},
+}
 const ENEMY_SPAWN_MARGIN := 140.0
 const MAX_ENEMIES := 120
 var element_upgrade_defs := [
@@ -614,7 +662,7 @@ func _show_level_up_options(level: int) -> void:
 		child.queue_free()
 	if level == 1:
 		# Level 1: choose the initial weapon only.
-		for option_id in ["auto_shooter", "orbit_sword"]:
+		for option_id in ["auto_shooter", "orbit_sword", "drone_minion"]:
 			level_up_options_box.add_child(_create_weapon_card(option_id))
 	elif level == 2:
 		# Level 2: choose an element (one-shot). If all elements exhausted, fall back to stat upgrades.
@@ -630,14 +678,50 @@ func _show_level_up_options(level: int) -> void:
 	level_up_overlay.visible = true
 	get_tree().paused = true
 
-# Stat pool: excludes stats already capped at MAX_STACKS.
+# Stat pool: excludes stats already capped at MAX_STACKS。
+# DURATION 对 drone_minion 无效:若已解锁武器里只有 drone_minion(没有 auto_shooter / orbit_sword),
+# 则 DURATION 不入池(framework §7 禁用选项,避免选了无效果的升级)。
 func _build_stat_pool() -> Array:
 	var pool := []
+	var types := _get_unlocked_weapon_types()
+	var duration_disabled := not types.is_empty() and not types.has("auto_shooter") and not types.has("orbit_sword")
 	for def in stat_upgrade_defs:
 		var stat: int = int(def["stat"])
+		if stat == StatMath.Stat.DURATION and duration_disabled:
+			continue
 		if int(_stat_stacks.get(stat, 0)) < StatMath.MAX_STACKS:
 			pool.append(def)
 	return pool
+
+
+# 当前已解锁的 weapon_type 列表(去重,顺序与 UPGRADE_OPTIONS 一致)。
+func _get_unlocked_weapon_types() -> Array:
+	var types := []
+	for option_id in _acquired_upgrades.keys():
+		var option: Dictionary = UPGRADE_OPTIONS.get(str(option_id), {})
+		var wtype := str(option.get("weapon_type", ""))
+		if not wtype.is_empty() and not types.has(wtype):
+			types.append(wtype)
+	return types
+
+
+# 按已解锁武器动态拼接 stat 描述;无武器时回退到 stat_upgrade_defs 的兜底 desc。
+func _build_stat_description(stat: int) -> String:
+	var types := _get_unlocked_weapon_types()
+	if types.is_empty():
+		for def in stat_upgrade_defs:
+			if int(def["stat"]) == stat:
+				return str(def["desc"])
+		return ""
+	var parts := []
+	for wtype in types:
+		var per: Dictionary = STAT_DESC_PER_WEAPON.get(stat, {})
+		var d := str(per.get(wtype, ""))
+		if not d.is_empty():
+			parts.append(d)
+	if parts.is_empty():
+		return ""
+	return " / ".join(parts)
 
 
 # Normal upgrade pool: excludes one-shot upgrades already unlocked.
@@ -738,7 +822,8 @@ func _create_upgrade_card(def: Dictionary) -> Control:
 	card.add_child(button)
 
 	var description := Label.new()
-	description.text = str(def["desc"])
+	# stat 升级描述按已解锁武器动态拼接;element 升级沿用 def["desc"]。
+	description.text = str(def["desc"]) if is_element else _build_stat_description(stat)
 	description.custom_minimum_size = Vector2(170, 0)
 	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -782,6 +867,8 @@ func _apply_upgrade(option_id: String) -> void:
 			_create_auto_shooter()
 		"orbit_sword":
 			_create_orbit_sword()
+		"drone_minion":
+			_create_drone_minion()
 
 
 # 通用 stat 升级:堆叠数 +1,并同步给所有已解锁武器。
@@ -809,6 +896,15 @@ func _create_orbit_sword() -> void:
 	weapons_layer.add_child(orbit_sword)
 	_unlocked_weapons.append(orbit_sword)
 	_sync_weapon_stats(orbit_sword)
+
+
+func _create_drone_minion() -> void:
+	var drone_minion := DroneMinionScene.new()
+	drone_minion.name = "DroneMinion"
+	drone_minion.setup(player, enemies_layer, combat_effects)
+	weapons_layer.add_child(drone_minion)
+	_unlocked_weapons.append(drone_minion)
+	_sync_weapon_stats(drone_minion)
 
 
 # 新武器解锁时,把当前已累积的 stat 堆叠同步过去(支持后续多武器共存)。
