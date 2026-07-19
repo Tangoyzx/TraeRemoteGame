@@ -10,6 +10,8 @@ const OrbitSwordScene := preload("res://scripts/weapons/orbit_sword.gd")
 const DroneMinionScene := preload("res://scripts/weapons/drone_minion.gd")
 const BossScene := preload("res://scripts/boss.gd")
 const BossIntroScene := preload("res://scripts/boss_intro.gd")
+const TurretScene := preload("res://scripts/turret.gd")
+const EnemyProjectileScene := preload("res://scripts/enemy_projectile.gd")
 
 const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
 const MAP_SIZE := Vector2(12800.0, 7200.0)
@@ -20,7 +22,7 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 99999]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.1.13"
+const GAME_VERSION := "v1.1.14"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -44,6 +46,19 @@ const ENEMY_CONFIGS := {
 		"score_value": 2,
 		"body_color": Color(0.80, 0.34, 0.95, 1.0),
 		"outline_color": Color(0.96, 0.75, 1.0, 1.0),
+	},
+	# 固定炮塔:不动,远距离朝玩家发射子弹。hp 与 chubby 同档,伤害=玩家子弹
+	# 基础伤害(100=1 玩家 HP),score_value 给 5(处理难度高于普通小怪)。
+	# speed 字段对炮塔无意义(重写了 _process),保留 0 仅满足 config 结构。
+	"turret": {
+		"name": "Turret",
+		"radius": BASIC_ENEMY_RADIUS,
+		"max_hp": 300.0,
+		"damage": 100,
+		"speed": 0.0,
+		"score_value": 5,
+		"body_color": Color(1.0, 1.0, 1.0, 1.0),
+		"outline_color": Color(0.55, 0.55, 0.55, 1.0),
 	},
 }
 const SPAWN_STRATEGY := [
@@ -71,6 +86,8 @@ const SPAWN_STRATEGY := [
 		"rates": {
 			"basic": 40.0,
 			"chubby": 10.0,
+			# turret 速率 0.1 = 每 10 秒尝试生成 1 个,实际数量受 MAX_TURRETS=3 限制。
+			"turret": 0.1,
 		},
 	},
 ]
@@ -171,6 +188,13 @@ var STAT_DESC_PER_WEAPON := {
 }
 const ENEMY_SPAWN_MARGIN := 140.0
 const MAX_ENEMIES := 120
+# 固定炮塔同时存活上限:独立于 MAX_ENEMIES,避免炮塔挤占普通敌人配额。
+# MAX_ENEMIES 仍作为绝对上限兜底(炮塔也是 enemies_layer 的子节点)。
+const MAX_TURRETS := 3
+# 炮塔生成在距离玩家 [MIN, MAX] 的环内,且整个身体落在地图边界内。
+# MIN > FIRE_RANGE(1280) 让玩家有反应时间,不会一出生就被开火打到。
+const TURRET_SPAWN_DIST_MIN := 1500.0
+const TURRET_SPAWN_DIST_MAX := 3000.0
 var element_upgrade_defs := [
 	{"id": "element_fire", "element": "fire", "title": "Fire", "desc": "On hit: explode for 50 damage in 100px radius. 5s cooldown.", "weight": 45},
 	{"id": "element_poison", "element": "poison", "title": "Poison", "desc": "On hit: poison for 10 damage/sec over 5s. Reapply resets duration.", "weight": 45},
@@ -503,6 +527,11 @@ func _update_enemy_spawns(delta: float) -> void:
 			continue
 		_spawn_budgets[enemy_type] = float(_spawn_budgets.get(enemy_type, 0.0)) + float(rates[enemy_type]) / 60.0 * delta
 		while _spawn_budgets[enemy_type] >= 1.0 and enemies_layer.get_child_count() < MAX_ENEMIES:
+			# turret 单独限制同时存活数量;达上限时消耗 budget 等下次窗口,
+			# 避免 budget 持续累积导致旧 turret 一死就瞬间补一堆。
+			if enemy_type == "turret" and _count_turrets() >= MAX_TURRETS:
+				_spawn_budgets[enemy_type] -= 1.0
+				continue
 			_spawn_enemy(enemy_type)
 			_spawn_budgets[enemy_type] -= 1.0
 
@@ -520,15 +549,48 @@ func _get_current_spawn_rates() -> Dictionary:
 func _spawn_enemy(enemy_type: String) -> void:
 	if is_game_over or player == null or enemies_layer.get_child_count() >= MAX_ENEMIES:
 		return
+	if enemy_type == "turret":
+		_spawn_turret()
+		return
 	var enemy := EnemyScene.new()
 	enemy.apply_config(ENEMY_CONFIGS[enemy_type])
-	enemy.global_position = _get_spawn_position_near_view()
+	enemy.global_position = _get_spawn_position_near_view(enemy.radius)
 	enemy.target = player
 	enemy.died.connect(_on_enemy_died)
 	enemies_layer.add_child(enemy)
 
 
-func _get_spawn_position_near_view() -> Vector2:
+# 炮塔专属生成:位置在玩家周围环形带内(整个地图范围,而非屏幕外),
+# 注入子弹 layer 与子弹场景供其开火使用。
+func _spawn_turret() -> void:
+	if is_game_over or player == null:
+		return
+	var turret := TurretScene.new()
+	turret.apply_config(ENEMY_CONFIGS["turret"])
+	turret.global_position = _get_turret_spawn_position(turret.radius)
+	turret.target = player
+	turret.died.connect(_on_enemy_died)
+	turret.setup_projectiles(projectiles_layer, EnemyProjectileScene)
+	enemies_layer.add_child(turret)
+
+
+# 炮塔生成位置:玩家周围 [MIN, MAX] 距离的环内随机一点,clamp 到地图边界内。
+# MIN > FIRE_RANGE 让玩家有反应时间;MAX 限制不要太远避免炮塔孤立无意义。
+func _get_turret_spawn_position(edge_margin: float = 0.0) -> Vector2:
+	var center: Vector2 = player.global_position
+	var angle := randf() * TAU
+	var dist := randf_range(TURRET_SPAWN_DIST_MIN, TURRET_SPAWN_DIST_MAX)
+	var pos := center + Vector2(cos(angle), sin(angle)) * dist
+	return _clamp_to_map(pos, edge_margin)
+
+
+func _count_turrets() -> int:
+	return get_tree().get_nodes_in_group("turret").size()
+
+
+# 在玩家可见区外生成敌方单位。edge_margin 为实体半径,用于把 clamp 范围向内收,
+# 确保整个实体身体(含半径)都落在地图边界内,不会跨出边界。
+func _get_spawn_position_near_view(edge_margin: float = 0.0) -> Vector2:
 	var viewport_size := get_viewport_rect().size
 	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
 		viewport_size = VIEWPORT_SIZE
@@ -549,17 +611,30 @@ func _get_spawn_position_near_view() -> Vector2:
 		_:
 			spawn.x = randf_range(center.x - half.x, center.x + half.x)
 			spawn.y = center.y + half.y + ENEMY_SPAWN_MARGIN
-	return _clamp_to_map(spawn)
+	return _clamp_to_map(spawn, edge_margin)
 
 
 func _set_player_target(world_position: Vector2) -> void:
 	player.set_move_target(_clamp_to_map(world_position))
 
 
-func _clamp_to_map(world_position: Vector2) -> Vector2:
+# 把坐标限制在地图矩形内。margin > 0 时把范围向内收,确保半径为 margin 的实体
+# 整体(含身体)都落在地图边界内,而不是只有中心点在边界内。
+func _clamp_to_map(world_position: Vector2, margin: float = 0.0) -> Vector2:
+	var min_x: float = MAP_RECT.position.x + margin
+	var min_y: float = MAP_RECT.position.y + margin
+	var max_x: float = MAP_RECT.end.x - margin
+	var max_y: float = MAP_RECT.end.y - margin
+	# 防止 margin 过大导致 min > max(地图极小时兜底)
+	if max_x < min_x:
+		min_x = (MAP_RECT.position.x + MAP_RECT.end.x) * 0.5
+		max_x = min_x
+	if max_y < min_y:
+		min_y = (MAP_RECT.position.y + MAP_RECT.end.y) * 0.5
+		max_y = min_y
 	return Vector2(
-		clampf(world_position.x, MAP_RECT.position.x, MAP_RECT.end.x),
-		clampf(world_position.y, MAP_RECT.position.y, MAP_RECT.end.y)
+		clampf(world_position.x, min_x, max_x),
+		clampf(world_position.y, min_y, max_y)
 	)
 
 
@@ -595,7 +670,7 @@ func _spawn_boss(boss_type: String) -> void:
 		return
 	var boss = BossScene.new()
 	boss.apply_config(BOSS_CONFIGS[boss_type])
-	boss.global_position = _get_boss_spawn_position()
+	boss.global_position = _get_boss_spawn_position(boss.radius)
 	boss.target = player
 	boss.died.connect(_on_enemy_died)
 	boss.died.connect(_on_boss_died)
@@ -614,11 +689,12 @@ func _on_boss_died(boss) -> void:
 
 
 # Boss 生成在玩家可见区外 BOSS_SPAWN_DISTANCE 处,在地图范围内 clamp。
-func _get_boss_spawn_position() -> Vector2:
+# edge_margin 为 boss 半径,确保整个 boss 身体落在地图边界内。
+func _get_boss_spawn_position(edge_margin: float = 0.0) -> Vector2:
 	var center: Vector2 = player.global_position
 	var angle := randf() * TAU
 	var pos := center + Vector2(cos(angle), sin(angle)) * BOSS_SPAWN_DISTANCE
-	return _clamp_to_map(pos)
+	return _clamp_to_map(pos, edge_margin)
 
 
 func _start_boss_intro(boss) -> void:
@@ -932,6 +1008,7 @@ func _on_player_died() -> void:
 	game_over_label.visible = true
 	get_tree().call_group("enemy", "set_process", false)
 	get_tree().call_group("projectile", "queue_free")
+	get_tree().call_group("enemy_projectile", "queue_free")
 	get_tree().call_group("weapon", "set_process", false)
 
 

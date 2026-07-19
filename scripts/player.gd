@@ -81,6 +81,9 @@ func _damage_overlapping_enemies() -> void:
 			return
 
 
+# 玩家 area 进入信号:由对方侧(area)负责扣血。
+# - enemy group:敌人在 player._damage_overlapping_enemies 里处理(玩家移动压到敌人)
+# - enemy_projectile group:子弹侧 EnemyProjectile._on_area_entered 调用 take_damage 并自销毁
 func _on_area_entered(area: Area2D) -> void:
 	if area.is_in_group("enemy"):
 		take_damage(area.damage)
