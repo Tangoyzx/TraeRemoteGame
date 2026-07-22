@@ -17,12 +17,12 @@ const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
 const MAP_SIZE := Vector2(12800.0, 7200.0)
 const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 # 各等级升级所需累计积分(下标 = 等级 - 1)。超出此列表的等级不再触发升级。
-# TODO(临时调试): 第3级 100->40, 第4级 200->60, 方便测试后期等级。
-#                    调试完成后恢复为 [0, 20, 100, 200, 99999]。
-const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 99999]
+# TODO(临时调试): 第3级 100->40, 第4级 200->60;新增 Level 5-8(80/100/120/200)便于测试后期等级。
+#                    调试完成后需确认正式积分曲线。
+const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 80, 100, 120, 200, 99999]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.1.14"
+const GAME_VERSION := "v1.1.16"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -214,6 +214,7 @@ var score_label: Label
 var level_label: Label
 var version_label: Label
 var game_over_label: Label
+var restart_button: Button
 var level_up_overlay: ColorRect
 var level_up_title: Label
 var level_up_options_box: HBoxContainer
@@ -380,7 +381,25 @@ func _build_ui() -> void:
 	game_over_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	game_over_label.add_theme_font_size_override("font_size", 72)
 	game_over_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	game_over_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui_layer.add_child(game_over_label)
+
+	# 重新开始按钮:玩家死亡时显示在 GAME OVER 文字下方,点击后重载场景。
+	# 必须放在 game_over_label 之后(层级在上)才能优先接收点击。
+	restart_button = Button.new()
+	restart_button.name = "RestartButton"
+	restart_button.visible = false
+	restart_button.text = "Restart"
+	restart_button.custom_minimum_size = Vector2(220, 64)
+	restart_button.add_theme_font_size_override("font_size", 30)
+	restart_button.set_anchors_preset(Control.PRESET_CENTER)
+	restart_button.offset_left = -110.0
+	restart_button.offset_right = 110.0
+	restart_button.offset_top = 80.0
+	restart_button.offset_bottom = 144.0
+	restart_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	restart_button.pressed.connect(_on_restart_pressed)
+	ui_layer.add_child(restart_button)
 
 	# Boss 出场名字:屏幕正中央,过场期间显示,需 ALWAYS 才能在暂停时显示
 	_boss_name_label = Label.new()
@@ -1006,10 +1025,17 @@ func _on_player_died() -> void:
 	if level_up_overlay != null:
 		level_up_overlay.visible = false
 	game_over_label.visible = true
+	if restart_button != null:
+		restart_button.visible = true
 	get_tree().call_group("enemy", "set_process", false)
 	get_tree().call_group("projectile", "queue_free")
 	get_tree().call_group("enemy_projectile", "queue_free")
 	get_tree().call_group("weapon", "set_process", false)
+
+
+# 点击重新开始按钮:重载当前场景,回到初始状态。
+func _on_restart_pressed() -> void:
+	get_tree().reload_current_scene()
 
 
 class MapBackground:
