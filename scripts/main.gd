@@ -9,6 +9,7 @@ const AutoShooterScene := preload("res://scripts/weapons/auto_shooter.gd")
 const OrbitSwordScene := preload("res://scripts/weapons/orbit_sword.gd")
 const DroneMinionScene := preload("res://scripts/weapons/drone_minion.gd")
 const BossScene := preload("res://scripts/boss.gd")
+const BossShooterScene := preload("res://scripts/boss_shooter.gd")
 const BossIntroScene := preload("res://scripts/boss_intro.gd")
 const TurretScene := preload("res://scripts/turret.gd")
 const EnemyProjectileScene := preload("res://scripts/enemy_projectile.gd")
@@ -17,12 +18,12 @@ const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
 const MAP_SIZE := Vector2(12800.0, 7200.0)
 const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 # 各等级升级所需累计积分(下标 = 等级 - 1)。超出此列表的等级不再触发升级。
-# TODO(临时调试): 第3级 100->40, 第4级 200->60;新增 Level 5-8(80/100/120/200)便于测试后期等级。
+# TODO(临时调试): 第3级 100->40, 第4级 200->60;新增 Level 5-12(80/100/120/200/220/240/260)便于测试后期等级。
 #                    调试完成后需确认正式积分曲线。
-const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 80, 100, 120, 200, 99999]
+const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 80, 100, 120, 200, 220, 240, 260, 99999]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.1.16"
+const GAME_VERSION := "v1.1.17"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -104,9 +105,23 @@ const BOSS_CONFIGS := {
 		"body_color": Color(0.75, 0.18, 0.22, 1.0),
 		"outline_color": Color(1.0, 0.55, 0.55, 1.0),
 	},
+	# 会开火的 Big Brother 变体:继承移动(追玩家)+ 定时朝玩家发射子弹。
+	# shooter 标志由 _spawn_boss 判断,决定创建 BossShooterScene 并注入子弹体系。
+	# 伤害/血量同 big_brother;颜色改为橙色便于玩家识别。
+	"big_brother_shooter": {
+		"boss_name": "Big Brother",
+		"radius": 60.0,
+		"max_hp": 2000.0,
+		"damage": 300,
+		"speed": 57.5,
+		"score_value": 50,
+		"body_color": Color(0.95, 0.45, 0.12, 1.0),
+		"outline_color": Color(1.0, 0.78, 0.45, 1.0),
+		"shooter": true,
+	},
 }
 # Boss 生成池:每次到点从池中随机选一个生成。
-const BOSS_SPAWN_POOL := ["big_brother"]
+const BOSS_SPAWN_POOL := ["big_brother", "big_brother_shooter"]
 # Boss 生成时机:第一个 boss 在游戏开始后 BOSS_FIRST_SPAWN_DELAY 秒生成
 # (相当于把第 0 秒当作"上一只 boss 刚死");之后每只 boss 死亡后再过
 # BOSS_NEXT_SPAWN_DELAY 秒生成下一只,同一时间最多存在一只 boss。
@@ -687,12 +702,17 @@ func _update_boss_spawns() -> void:
 func _spawn_boss(boss_type: String) -> void:
 	if not BOSS_CONFIGS.has(boss_type):
 		return
-	var boss = BossScene.new()
-	boss.apply_config(BOSS_CONFIGS[boss_type])
+	var config: Dictionary = BOSS_CONFIGS[boss_type]
+	# shooter 标志决定创建会开火的 boss 变体;否则用普通 boss。
+	var is_shooter := bool(config.get("shooter", false))
+	var boss = BossShooterScene.new() if is_shooter else BossScene.new()
+	boss.apply_config(config)
 	boss.global_position = _get_boss_spawn_position(boss.radius)
 	boss.target = player
 	boss.died.connect(_on_enemy_died)
 	boss.died.connect(_on_boss_died)
+	if is_shooter:
+		boss.setup_projectiles(projectiles_layer, EnemyProjectileScene)
 	enemies_layer.add_child(boss)
 	_active_boss = boss
 	_show_boss_health_bar(boss)
