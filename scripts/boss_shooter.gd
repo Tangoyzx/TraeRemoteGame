@@ -7,6 +7,8 @@ extends Boss
 const FIRE_INTERVAL := 1.5
 const FIRE_RANGE := 1400.0
 const PROJECTILE_SPEED := 250.0
+# 子弹伤害固定为 100(= 1 玩家血点),与 boss 本体碰撞伤害(damage=300)解耦。
+const PROJECTILE_DAMAGE := 100.0
 # 子弹寿命 = 射程 / 速度,让子弹飞完射程就消失,避免无限飞行。
 const PROJECTILE_LIFETIME := FIRE_RANGE / PROJECTILE_SPEED
 
@@ -44,7 +46,7 @@ func _try_fire() -> void:
 		global_position,
 		to_target.normalized(),
 		PROJECTILE_SPEED,
-		float(damage),
+		PROJECTILE_DAMAGE,
 		PROJECTILE_LIFETIME
 	)
 	_projectiles_layer.add_child(projectile)
