@@ -20,10 +20,10 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 # 各等级升级所需累计积分(下标 = 等级 - 1)。超出此列表的等级不再触发升级。
 # TODO(临时调试): 第3级 100->40, 第4级 200->60;新增 Level 5-12(80/100/120/200/220/240/260)便于测试后期等级。
 #                    调试完成后需确认正式积分曲线。
-const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 80, 100, 120, 200, 220, 240, 260, 99999]
+const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 80, 100, 120, 200, 220, 240, 260, 280, 290, 300, 320, 400]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.1.19"
+const GAME_VERSION := "v1.1.20"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
