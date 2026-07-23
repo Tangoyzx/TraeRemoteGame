@@ -1,0 +1,97 @@
+name: Deploy Godot Web to Cloudflare Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-pages
+  cancel-in-progress: true
+
+jobs:
+  export-and-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.1
+          use-dotnet: false
+          include-templates: true
+
+      - name: Check Godot version
+        run: godot --version
+
+      - name: Import project once
+        run: |
+          godot --headless --path . --import --quit
+
+      - name: Force non-threaded template
+        # Cloudflare Pages can serve static assets without COOP/COEP headers, so keep
+        # the web_nothreads template to avoid requiring SharedArrayBuffer.
+        run: |
+          NO_THREADS_TPL="$HOME/.local/share/godot/export_templates/4.7.1.stable/web_nothreads_release.zip"
+          if [ ! -f "$NO_THREADS_TPL" ]; then
+            echo "ERROR: non-threaded template not found at $NO_THREADS_TPL"
+            exit 1
+          fi
+          sed -i "s|^custom_template/release=.*|custom_template/release=\"$NO_THREADS_TPL\"|" export_presets.cfg
+          grep "custom_template" export_presets.cfg
+
+      - name: Export Web
+        run: |
+          mkdir -p dist
+          godot --headless --path . --export-release "Web" "dist/index.html"
+
+      - name: Gzip-precompress wasm
+        # Keep the uploaded artifact below Cloudflare Pages' per-file size limit.
+        # custom_shell.html fetches index.wasm.gz and decompresses it in the browser.
+        run: |
+          set -euo pipefail
+          cd dist
+          gzip -9 -k -f index.wasm
+          echo "index.wasm -> $(du -h index.wasm.gz | cut -f1)"
+          rm -f index.wasm
+          ls -lh
+
+      - name: Add Cloudflare Pages headers
+        run: |
+          cp web/cloudflare/_headers dist/_headers
+
+      - name: Validate Web export artifact
+        run: |
+          set -euo pipefail
+          test -f dist/index.html
+          test -f dist/index.js
+          test -f dist/index.pck
+          test -f dist/index.wasm.gz
+          test -f dist/_headers
+          test ! -f dist/index.wasm
+          grep -q 'DecompressionStream' dist/index.html
+
+      - name: Validate Cloudflare configuration
+        run: |
+          set -euo pipefail
+          : "${CLOUDFLARE_ACCOUNT_ID:?Missing GitHub Secret: CLOUDFLARE_ACCOUNT_ID}"
+          : "${CLOUDFLARE_API_TOKEN:?Missing GitHub Secret: CLOUDFLARE_API_TOKEN}"
+          : "${CLOUDFLARE_PAGES_PROJECT_NAME:?Missing GitHub Actions variable: CLOUDFLARE_PAGES_PROJECT_NAME}"
+
+      - name: Deploy to Cloudflare Pages
+        run: |
+          npx wrangler@latest pages deploy dist \
+            --project-name="$CLOUDFLARE_PAGES_PROJECT_NAME" \
+            --branch=main

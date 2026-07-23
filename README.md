@@ -101,6 +101,73 @@ Local export output is ignored by Git. The normal publishing flow can rely on Gi
 
 The workflow uses `chickensoft-games/setup-godot@v2` to prepare Godot 4.7.1 and export templates on GitHub's temporary Ubuntu runner.
 
+## Cloudflare Pages deployment
+
+This repository can also deploy the same Godot Web export to Cloudflare Pages:
+
+```text
+.github/workflows/deploy-cloudflare-pages.yml
+```
+
+Cloudflare Pages only needs to host static files. Godot does not run on Cloudflare.
+The workflow builds the game on GitHub Actions, precompresses `index.wasm` to
+`index.wasm.gz`, removes the raw `index.wasm`, copies Cloudflare headers from
+`web/cloudflare/_headers`, and uploads `dist/` with Wrangler.
+
+### Cloudflare setup
+
+1. In Cloudflare, open `Workers & Pages`.
+2. Create a Pages project using **Direct Upload**. Do not connect the Git
+   repository to Cloudflare's own build system.
+3. Use a stable project name, for example:
+
+```text
+trae-remote-game
+```
+
+4. Create a Cloudflare API token with permission to edit Cloudflare Pages for
+   the target account.
+5. In GitHub, open `Settings -> Secrets and variables -> Actions`.
+6. Add repository secrets:
+
+| Secret | Required | Description |
+| --- | --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | Yes | Cloudflare account ID that owns the Pages project. |
+| `CLOUDFLARE_API_TOKEN` | Yes | API token used by Wrangler to upload the build. |
+
+7. Add repository variable:
+
+| Variable | Required | Example | Description |
+| --- | --- | --- | --- |
+| `CLOUDFLARE_PAGES_PROJECT_NAME` | Yes | `trae-remote-game` | Existing Cloudflare Pages project name. |
+
+### Deployment flow
+
+Push to `main` or manually run `Deploy Godot Web to Cloudflare Pages` in
+GitHub Actions. The workflow uploads these files:
+
+```text
+index.html
+index.js
+index.pck
+index.wasm.gz
+_headers
+```
+
+The custom Web shell fetches `index.wasm.gz` and decompresses it in the browser,
+so Cloudflare should serve it as a normal static asset and must not add
+`Content-Encoding: gzip` to that file.
+
+After the workflow succeeds, open the Cloudflare Pages production URL, for
+example:
+
+```text
+https://trae-remote-game.pages.dev
+```
+
+Verify that the game loads and that the top-center version label shows the
+latest `GAME_VERSION`.
+
 ## Tencent Cloud Lighthouse deployment
 
 This repository also includes an optional workflow for deploying the same Godot Web export to a Tencent Cloud Lighthouse server through SSH and `rsync`:
