@@ -23,7 +23,7 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 80, 100, 120, 200, 220, 240, 260, 280, 290, 300, 320, 400]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.1.20"
+const GAME_VERSION := "v1.1.21"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -228,6 +228,7 @@ var combat_effects
 var score_label: Label
 var level_label: Label
 var version_label: Label
+var hint_label: Label
 var game_over_label: Label
 var restart_button: Button
 var level_up_overlay: ColorRect
@@ -387,6 +388,21 @@ func _build_ui() -> void:
 	version_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	version_label.add_theme_font_size_override("font_size", 20)
 	ui_layer.add_child(version_label)
+
+	# 操作提示:屏幕右上角,半透明,与左上 score/level 视觉对称。
+	hint_label = Label.new()
+	hint_label.name = "HintLabel"
+	hint_label.text = "Click / Tap to Move"
+	hint_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	hint_label.offset_left = -300.0
+	hint_label.offset_right = -24.0
+	hint_label.offset_top = 24.0
+	hint_label.offset_bottom = 48.0
+	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hint_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hint_label.add_theme_font_size_override("font_size", 18)
+	hint_label.modulate = Color(1.0, 1.0, 1.0, 0.60)
+	ui_layer.add_child(hint_label)
 
 	game_over_label = Label.new()
 	game_over_label.name = "GameOverLabel"
