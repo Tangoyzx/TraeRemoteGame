@@ -23,6 +23,17 @@ const ELECTRIC_CHAIN_RADIUS := 100.0
 const ELECTRIC_CHAIN_MAX_TARGETS := 4
 const ELECTRIC_DAMAGE := 100.0
 
+# 毒地进阶升级:毒属性 weapon hit 触发持续伤害时,有 POISON_POOL_TRIGGER_CHANCE 概率
+# 在目标位置生成一个毒地。毒地保留 POISON_POOL_DURATION 秒,半径 POISON_POOL_RADIUS,
+# 站在毒地上的敌方单位会被持续刷新毒属性 debuff(伤害/时长同基础毒),并额外受到
+# POISON_POOL_SPEED_MULTIPLIER 的减速(独立 debuff,每帧刷新短时长,离开毒地立刻失效)。
+const POISON_POOL_TRIGGER_CHANCE := 0.5
+const POISON_POOL_RADIUS := 100.0
+const POISON_POOL_DURATION := 5.0
+const POISON_POOL_SPEED_MULTIPLIER := 0.7
+# 减速 debuff 的单次时长:略大于一帧,保证每帧刷新时不会中断;离开毒地后很快失效。
+const POISON_POOL_SLOW_DURATION := 0.25
+
 # 元素 → 显示色映射(火=红、毒=绿、冰=蓝)。武器获得元素后会按此着色。
 # 用 var 而非 const:const Dictionary 在 release 编译器里 .get()/[] 的值类型
 # 无法静态推断为 Color,会导致依赖本脚本的 main.gd 编译失败。
@@ -38,6 +49,8 @@ var ELEMENT_PRIORITY := [ELEMENT_FIRE, ELEMENT_POISON, ELEMENT_FROST, ELEMENT_EL
 var enemies_layer: Node2D
 var _unlocked_elements := {}
 var _fire_explosion_cooldown := 0.0
+# 毒地进阶升级是否已解锁(基础毒元素解锁后才可解锁此升级)。
+var _poison_pool_unlocked := false
 
 
 func setup(enemy_container: Node2D) -> void:
@@ -55,6 +68,15 @@ func unlock_element(element_id: String) -> void:
 
 func is_element_unlocked(element_id: String) -> bool:
 	return bool(_unlocked_elements.get(element_id, false))
+
+
+# 解锁毒地进阶升级。调用方需保证 poison 元素已解锁(由 main.gd 的升级池过滤保证)。
+func unlock_poison_pool() -> void:
+	_poison_pool_unlocked = true
+
+
+func is_poison_pool_unlocked() -> bool:
+	return _poison_pool_unlocked
 
 
 # 查询某元素的显示色。
@@ -229,6 +251,10 @@ func _apply_on_hit_debuffs(target) -> void:
 			POISON_DAMAGE_PER_SECOND,
 			1.0
 		)
+		# 毒属性触发持续伤害时,有概率在目标位置生成毒地。
+		# 在 poison 已应用(且 target 仍存活)后再 roll,确保毒地只对仍存活的敌人生成。
+		if is_instance_valid(target) and target.hp > 0.0:
+			_try_spawn_poison_pool(target.global_position)
 	if is_element_unlocked(ELEMENT_FROST):
 		target.apply_debuff(
 			ELEMENT_FROST,
@@ -236,3 +262,83 @@ func _apply_on_hit_debuffs(target) -> void:
 			FROST_DAMAGE_PER_SECOND,
 			FROST_SPEED_MULTIPLIER
 		)
+
+
+# 毒地生成:50% 概率在 center 处生成一个 PoisonPool 节点(挂在 enemies_layer 上)。
+# 与电属性连锁一样,直接生成视觉节点 + 在 _process 里 apply_debuff,不会递归触发 weapon hit。
+func _try_spawn_poison_pool(center: Vector2) -> void:
+	if not _poison_pool_unlocked or not is_element_unlocked(ELEMENT_POISON) or enemies_layer == null:
+		return
+	if randf() > POISON_POOL_TRIGGER_CHANCE:
+		return
+	var pool := PoisonPool.new()
+	pool.radius = POISON_POOL_RADIUS
+	pool.duration = POISON_POOL_DURATION
+	pool.color = ELEMENT_COLORS[ELEMENT_POISON]
+	pool.position = center
+	pool.enemies_layer = enemies_layer
+	pool.poison_damage_per_second = POISON_DAMAGE_PER_SECOND
+	pool.poison_duration = POISON_DURATION
+	pool.speed_multiplier = POISON_POOL_SPEED_MULTIPLIER
+	pool.slow_duration = POISON_POOL_SLOW_DURATION
+	enemies_layer.add_child(pool)
+
+
+# 毒地:在 enemies_layer 上保留 duration 秒,半径 radius,绿色半透明圆 + 描边。
+# 每帧对范围内所有存活敌人:
+#   1) 刷新 poison debuff(伤害/时长同基础毒,slow=1.0 不影响速度)
+#   2) 应用独立的 poison_pool 减速 debuff(slow=speed_multiplier,短时长,离开后立即失效)
+# 用独立 debuff_id 是为了让减速只在毒地内生效,不被武器命中时的 poison(slow=1.0)覆盖掉。
+# PoisonPool 不可写入 _unlocked_elements / 不递归 apply_weapon_hit,只调用 take_damage/apply_debuff。
+class PoisonPool:
+	extends Node2D
+
+	var radius := 100.0
+	var duration := 5.0
+	var color := Color(0.40, 0.95, 0.40, 1.0)
+	var enemies_layer: Node2D
+	var poison_damage_per_second := 10.0
+	var poison_duration := 5.0
+	var speed_multiplier := 0.7
+	var slow_duration := 0.25
+	# debuff id 用常量,避免和 enemy.gd 的 DEBUFF_TINTS 字面量散落多处不一致。
+	const DEBUFF_ID_POISON := "poison"
+	const DEBUFF_ID_SLOW := "poison_pool"
+	var _remaining := 0.0
+	var _pulse_phase := 0.0
+
+
+	func _ready() -> void:
+		_remaining = duration
+		queue_redraw()
+
+
+	func _process(delta: float) -> void:
+		_remaining -= delta
+		_pulse_phase += delta
+		if _remaining <= 0.0:
+			queue_free()
+			return
+		queue_redraw()
+		if enemies_layer == null:
+			return
+		var radius_sq := radius * radius
+		for child in enemies_layer.get_children():
+			if not child.is_in_group("enemy") or not is_instance_valid(child) or child.hp <= 0.0:
+				continue
+			if global_position.distance_squared_to(child.global_position) <= radius_sq:
+				# 1) 刷新基础毒(伤害 + 5s 时长,slow=1.0 不影响速度)。
+				child.apply_debuff(DEBUFF_ID_POISON, poison_duration, poison_damage_per_second, 1.0)
+				# 2) 叠加毒地专属减速(独立 debuff,每帧刷新,离开毒地后 0.25s 内自动消失)。
+				child.apply_debuff(DEBUFF_ID_SLOW, slow_duration, 0.0, speed_multiplier)
+
+
+	func _draw() -> void:
+		# 半透明绿色填充 + 描边,带轻微脉冲让玩家察觉这是持续效果。
+		var pulse := 0.85 + 0.15 * sin(_pulse_phase * 6.0)
+		var fill_alpha := 0.22 * pulse
+		var edge_alpha := clampf(0.65 * pulse, 0.4, 0.85)
+		draw_circle(Vector2.ZERO, radius, Color(color.r, color.g, color.b, fill_alpha))
+		draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, Color(color.r, color.g, color.b, edge_alpha), 3.0)
+		# 内圈描边:强调中心位置,便于玩家识别毒地生成点。
+		draw_arc(Vector2.ZERO, radius * 0.5, 0.0, TAU, 32, Color(color.r, color.g, color.b, edge_alpha * 0.6), 2.0)

@@ -23,7 +23,7 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 80, 100, 120, 200, 220, 240, 260, 280, 290, 300, 320, 400]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.1.21"
+const GAME_VERSION := "v1.1.22"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -215,6 +215,13 @@ var element_upgrade_defs := [
 	{"id": "element_poison", "element": "poison", "title": "Poison", "desc": "On hit: poison for 10 damage/sec over 5s. Reapply resets duration.", "weight": 45},
 	{"id": "element_frost", "element": "frost", "title": "Frost", "desc": "On hit: frostbite for 2 damage/sec and 50% slow over 5s. Reapply resets duration.", "weight": 45},
 	{"id": "element_electric", "element": "electric", "title": "Electric", "desc": "On hit: 50% chance to chain lightning to 4 enemies within 100px, 100 damage each.", "weight": 45},
+]
+# 元素进阶升级:仅当对应基础元素已解锁后才会进入升级池;一次性,选中后不再出现。
+# advanced: true 让 _create_upgrade_card 走 _choose_advanced_upgrade 分支而非 _choose_element。
+# 权重规则:进阶元素升级的 weight 必须高于 stat_upgrade_defs 的单项权重(stat 最高 100),
+# 确保未解锁时比任何普通 stat 升级更容易出现;选中后从池中移除,自然回归 stat 为主。
+var element_advanced_upgrade_defs := [
+	{"id": "poison_pool", "element": "poison", "advanced": true, "title": "Poison Pool", "desc": "On poison hit: 50% chance to spawn a poison pool (radius 100, 5s). Enemies in pool refresh poison and are slowed by 30%.", "weight": 200},
 ]
 
 var player
@@ -806,8 +813,9 @@ func _show_level_up_options(level: int) -> void:
 		for def in _pick_weighted(pool, 3):
 			level_up_options_box.add_child(_create_upgrade_card(def))
 	else:
-		# Level 3+: choose from stat upgrades (repeatable up to MAX_STACKS).
-		for def in _pick_weighted(_build_stat_pool(), 3):
+		# Level 3+: stat 升级(可重复) + 进阶元素升级(一次性,基础元素已解锁才出现)。
+		var pool := _build_stat_pool() + _build_advanced_upgrade_pool()
+		for def in _pick_weighted(pool, 3):
 			level_up_options_box.add_child(_create_upgrade_card(def))
 	level_up_overlay.visible = true
 	get_tree().paused = true
@@ -865,6 +873,20 @@ func _build_normal_upgrade_pool() -> Array:
 		var element_id := str(def["element"])
 		if combat_effects == null or not combat_effects.is_element_unlocked(element_id):
 			pool.append(def)
+	return pool
+
+
+# 进阶升级池:仅包含「基础元素已解锁 + 进阶升级未解锁」的项;一次性,选中后不再出现。
+func _build_advanced_upgrade_pool() -> Array:
+	var pool := []
+	for def in element_advanced_upgrade_defs:
+		var element_id := str(def["element"])
+		if combat_effects == null or not combat_effects.is_element_unlocked(element_id):
+			continue
+		var upgrade_id := str(def["id"])
+		if _acquired_upgrades.has(upgrade_id):
+			continue
+		pool.append(def)
 	return pool
 
 
@@ -926,7 +948,8 @@ func _create_weapon_card(option_id: String) -> Control:
 
 
 func _create_upgrade_card(def: Dictionary) -> Control:
-	var is_element := def.has("element")
+	var is_advanced := bool(def.get("advanced", false))
+	var is_element := def.has("element") and not is_advanced
 	var stat := int(def.get("stat", -1))
 	var current_stacks: int = int(_stat_stacks.get(stat, 0))
 	var card := VBoxContainer.new()
@@ -936,8 +959,10 @@ func _create_upgrade_card(def: Dictionary) -> Control:
 	card.add_theme_constant_override("separation", 8)
 	card.process_mode = Node.PROCESS_MODE_ALWAYS
 
+	# element / advanced 升级只显示标题;stat 升级显示 Lv.X -> Lv.Y 堆叠进度。
+	var show_title_only := is_element or is_advanced
 	var title := Label.new()
-	title.text = str(def["title"]) if is_element else "%s  Lv.%d -> Lv.%d" % [str(def["title"]), current_stacks, current_stacks + 1]
+	title.text = str(def["title"]) if show_title_only else "%s  Lv.%d -> Lv.%d" % [str(def["title"]), current_stacks, current_stacks + 1]
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.add_theme_font_size_override("font_size", 22)
@@ -949,15 +974,17 @@ func _create_upgrade_card(def: Dictionary) -> Control:
 	button.text = str(def["title"])
 	button.add_theme_font_size_override("font_size", 34)
 	button.process_mode = Node.PROCESS_MODE_ALWAYS
-	if is_element:
+	if is_advanced:
+		button.pressed.connect(_choose_advanced_upgrade.bind(str(def["id"])))
+	elif is_element:
 		button.pressed.connect(_choose_element.bind(str(def["element"])))
 	else:
 		button.pressed.connect(_choose_stat.bind(stat))
 	card.add_child(button)
 
 	var description := Label.new()
-	# stat 升级描述按已解锁武器动态拼接;element 升级沿用 def["desc"]。
-	description.text = str(def["desc"]) if is_element else _build_stat_description(stat)
+	# stat 升级描述按已解锁武器动态拼接;element / advanced 升级沿用 def["desc"]。
+	description.text = str(def["desc"]) if show_title_only else _build_stat_description(stat)
 	description.custom_minimum_size = Vector2(170, 0)
 	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -979,6 +1006,18 @@ func _choose_stat(stat: int) -> void:
 func _choose_element(element_id: String) -> void:
 	if combat_effects != null:
 		combat_effects.unlock_element(element_id)
+	_finish_level_up()
+
+
+# 进阶元素升级:一次性,选中后记入 _acquired_upgrades,升级池过滤会避免再次出现。
+func _choose_advanced_upgrade(upgrade_id: String) -> void:
+	if _acquired_upgrades.has(upgrade_id):
+		return
+	_acquired_upgrades[upgrade_id] = true
+	if combat_effects != null:
+		match upgrade_id:
+			"poison_pool":
+				combat_effects.unlock_poison_pool()
 	_finish_level_up()
 
 
