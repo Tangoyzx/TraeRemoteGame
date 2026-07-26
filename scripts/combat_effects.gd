@@ -23,6 +23,14 @@ const ELECTRIC_CHAIN_RADIUS := 100.0
 const ELECTRIC_CHAIN_MAX_TARGETS := 4
 const ELECTRIC_DAMAGE := 100.0
 
+# 电属性进阶升级:连锁闪电命中敌人时有概率触发麻痹 debuff。
+# 麻痹:每秒扣 20 生命值 + 完全定身(speed_multiplier=0),持续 5 秒。
+const ELECTRIC_PARALYSIS_TRIGGER_CHANCE := 0.4
+const ELECTRIC_PARALYSIS_DAMAGE_PER_SECOND := 20.0
+const ELECTRIC_PARALYSIS_DURATION := 5.0
+const ELECTRIC_PARALYSIS_SPEED_MULTIPLIER := 0.0
+const DEBUFF_ID_PARALYSIS := "paralysis"
+
 # 毒地进阶升级:毒属性 weapon hit 触发持续伤害时,有 POISON_POOL_TRIGGER_CHANCE 概率
 # 在目标位置生成一个毒地。毒地保留 POISON_POOL_DURATION 秒,半径 POISON_POOL_RADIUS,
 # 站在毒地上的敌方单位会被持续刷新毒属性 debuff(伤害/时长同基础毒),并额外受到
@@ -51,6 +59,8 @@ var _unlocked_elements := {}
 var _fire_explosion_cooldown := 0.0
 # 毒地进阶升级是否已解锁(基础毒元素解锁后才可解锁此升级)。
 var _poison_pool_unlocked := false
+# 电属性麻痹进阶升级是否已解锁(基础电元素解锁后才可解锁此升级)。
+var _electric_paralysis_unlocked := false
 
 
 func setup(enemy_container: Node2D) -> void:
@@ -77,6 +87,15 @@ func unlock_poison_pool() -> void:
 
 func is_poison_pool_unlocked() -> bool:
 	return _poison_pool_unlocked
+
+
+# 解锁电属性麻痹进阶升级。调用方需保证 electric 元素已解锁(由 main.gd 的升级池过滤保证)。
+func unlock_electric_paralysis() -> void:
+	_electric_paralysis_unlocked = true
+
+
+func is_electric_paralysis_unlocked() -> bool:
+	return _electric_paralysis_unlocked
 
 
 # 查询某元素的显示色。
@@ -154,6 +173,8 @@ class ExplosionFlash:
 # 电属性连锁闪电:命中后 50% 概率触发,从首个目标开始向范围内最近的未访问敌人跳跃,
 # 最多攻击 ELECTRIC_CHAIN_MAX_TARGETS 个敌人(含首个),每击 ELECTRIC_DAMAGE 伤害。
 # 直接调用 take_damage 而非 apply_weapon_hit,避免递归触发火/毒/冰/电导致指数级伤害。
+# 若电属性麻痹进阶升级已解锁,每个被闪电命中的敌人额外有 ELECTRIC_PARALYSIS_TRIGGER_CHANCE
+# 概率被附加麻痹 debuff(每秒扣血 + 完全定身,持续 ELECTRIC_PARALYSIS_DURATION 秒)。
 func _try_electric_chain(initial_target, hit_position: Vector2) -> void:
 	if not is_element_unlocked(ELEMENT_ELECTRIC) or enemies_layer == null:
 		return
@@ -166,6 +187,7 @@ func _try_electric_chain(initial_target, hit_position: Vector2) -> void:
 	# 第一个目标:已被武器命中的敌人(若仍存活则受到电击伤害)
 	if initial_target != null and is_instance_valid(initial_target) and initial_target.hp > 0.0:
 		initial_target.take_damage(ELECTRIC_DAMAGE)
+		_try_apply_paralysis(initial_target)
 		visited.append(initial_target)
 		chain_positions.append(initial_target.global_position)
 	else:
@@ -179,6 +201,7 @@ func _try_electric_chain(initial_target, hit_position: Vector2) -> void:
 		if next_target == null:
 			break
 		next_target.take_damage(ELECTRIC_DAMAGE)
+		_try_apply_paralysis(next_target)
 		visited.append(next_target)
 		chain_positions.append(next_target.global_position)
 		jumps_remaining -= 1
@@ -186,6 +209,26 @@ func _try_electric_chain(initial_target, hit_position: Vector2) -> void:
 	# 画闪电视觉:连接所有经过的位置
 	if chain_positions.size() >= 2:
 		_spawn_chain_flash(chain_positions)
+
+
+# 电属性进阶升级:对被连锁闪电命中的目标按 ELECTRIC_PARALYSIS_TRIGGER_CHANCE 概率附加麻痹 debuff。
+# 麻痹 debuff 由 enemy.gd 的 _update_debuffs/_get_speed_multiplier 统一驱动:
+#   - 每秒扣 ELECTRIC_PARALYSIS_DAMAGE_PER_SECOND 生命值
+#   - speed_multiplier=0.0 使目标完全定身(_get_speed_multiplier 取 min,与其他减速叠加时取最严)
+# 直接 apply_debuff,不会递归触发 weapon hit。
+func _try_apply_paralysis(target) -> void:
+	if not _electric_paralysis_unlocked:
+		return
+	if target == null or not is_instance_valid(target) or target.hp <= 0.0:
+		return
+	if randf() > ELECTRIC_PARALYSIS_TRIGGER_CHANCE:
+		return
+	target.apply_debuff(
+		DEBUFF_ID_PARALYSIS,
+		ELECTRIC_PARALYSIS_DURATION,
+		ELECTRIC_PARALYSIS_DAMAGE_PER_SECOND,
+		ELECTRIC_PARALYSIS_SPEED_MULTIPLIER
+	)
 
 
 # 在 center 的 radius_sq 范围内找最近的、未在 exclude_list 中出现过的存活敌人。

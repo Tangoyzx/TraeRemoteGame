@@ -23,7 +23,7 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 80, 100, 120, 200, 220, 240, 260, 280, 290, 300, 320, 400]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.1.22"
+const GAME_VERSION := "v1.1.23"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -222,6 +222,7 @@ var element_upgrade_defs := [
 # 确保未解锁时比任何普通 stat 升级更容易出现;选中后从池中移除,自然回归 stat 为主。
 var element_advanced_upgrade_defs := [
 	{"id": "poison_pool", "element": "poison", "advanced": true, "title": "Poison Pool", "desc": "On poison hit: 50% chance to spawn a poison pool (radius 100, 5s). Enemies in pool refresh poison and are slowed by 30%.", "weight": 200},
+	{"id": "electric_paralysis", "element": "electric", "advanced": true, "title": "Electric Paralysis", "desc": "On electric chain hit: 40% chance to paralyze for 5s. Paralyzed enemies take 20 damage/sec and cannot move.", "weight": 200},
 ]
 
 var player
@@ -1018,6 +1019,8 @@ func _choose_advanced_upgrade(upgrade_id: String) -> void:
 		match upgrade_id:
 			"poison_pool":
 				combat_effects.unlock_poison_pool()
+			"electric_paralysis":
+				combat_effects.unlock_electric_paralysis()
 	_finish_level_up()
 
 

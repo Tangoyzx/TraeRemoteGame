@@ -20,6 +20,7 @@ var _debuffs := {}
 var DEBUFF_TINTS := {
 	"poison": Color(0.55, 1.0, 0.55, 0.40),
 	"frost": Color(0.55, 0.80, 1.0, 0.45),
+	"paralysis": Color(1.0, 0.90, 0.30, 0.45),
 }
 var _debuff_sig := ""
 
