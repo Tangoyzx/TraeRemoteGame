@@ -31,6 +31,17 @@ const ELECTRIC_PARALYSIS_DURATION := 5.0
 const ELECTRIC_PARALYSIS_SPEED_MULTIPLIER := 0.0
 const DEBUFF_ID_PARALYSIS := "paralysis"
 
+# 电属性雷暴进阶升级:连锁闪电命中敌人时有概率在目标位置生成雷暴乌云。
+# 乌云持续 10 秒,每 ELECTRIC_THUNDERSTORM_STRIKE_INTERVAL 秒自动劈离它最近的 1 个敌人,
+# 造成 ELECTRIC_THUNDERSTORM_DAMAGE 伤害,不递归触发连锁。
+# 索敌范围限制在 ELECTRIC_THUNDERSTORM_RANGE 内(= 子弹基础射程 SPEED×LIFETIME = 520×2.2 = 1144),
+# 从乌云位置起算;范围内无敌人则本轮不劈(等下一拍)。
+const ELECTRIC_THUNDERSTORM_TRIGGER_CHANCE := 0.4
+const ELECTRIC_THUNDERSTORM_DURATION := 10.0
+const ELECTRIC_THUNDERSTORM_DAMAGE := 100.0
+const ELECTRIC_THUNDERSTORM_STRIKE_INTERVAL := 1.0
+const ELECTRIC_THUNDERSTORM_RANGE := 1144.0
+
 # 毒地进阶升级:毒属性 weapon hit 触发持续伤害时,有 POISON_POOL_TRIGGER_CHANCE 概率
 # 在目标位置生成一个毒地。毒地保留 POISON_POOL_DURATION 秒,半径 POISON_POOL_RADIUS,
 # 站在毒地上的敌方单位会被持续刷新毒属性 debuff(伤害/时长同基础毒),并额外受到
@@ -61,6 +72,8 @@ var _fire_explosion_cooldown := 0.0
 var _poison_pool_unlocked := false
 # 电属性麻痹进阶升级是否已解锁(基础电元素解锁后才可解锁此升级)。
 var _electric_paralysis_unlocked := false
+# 电属性雷暴进阶升级是否已解锁(基础电元素解锁后才可解锁此升级)。
+var _electric_thunderstorm_unlocked := false
 
 
 func setup(enemy_container: Node2D) -> void:
@@ -96,6 +109,15 @@ func unlock_electric_paralysis() -> void:
 
 func is_electric_paralysis_unlocked() -> bool:
 	return _electric_paralysis_unlocked
+
+
+# 解锁电属性雷暴进阶升级。调用方需保证 electric 元素已解锁(由 main.gd 的升级池过滤保证)。
+func unlock_electric_thunderstorm() -> void:
+	_electric_thunderstorm_unlocked = true
+
+
+func is_electric_thunderstorm_unlocked() -> bool:
+	return _electric_thunderstorm_unlocked
 
 
 # 查询某元素的显示色。
@@ -175,6 +197,8 @@ class ExplosionFlash:
 # 直接调用 take_damage 而非 apply_weapon_hit,避免递归触发火/毒/冰/电导致指数级伤害。
 # 若电属性麻痹进阶升级已解锁,每个被闪电命中的敌人额外有 ELECTRIC_PARALYSIS_TRIGGER_CHANCE
 # 概率被附加麻痹 debuff(每秒扣血 + 完全定身,持续 ELECTRIC_PARALYSIS_DURATION 秒)。
+# 若电属性雷暴进阶升级已解锁,每个被闪电命中的敌人额外有 ELECTRIC_THUNDERSTORM_TRIGGER_CHANCE
+# 概率在目标位置生成雷暴乌云(持续电击范围内其他敌人,持续 ELECTRIC_THUNDERSTORM_DURATION 秒)。
 func _try_electric_chain(initial_target, hit_position: Vector2) -> void:
 	if not is_element_unlocked(ELEMENT_ELECTRIC) or enemies_layer == null:
 		return
@@ -188,6 +212,7 @@ func _try_electric_chain(initial_target, hit_position: Vector2) -> void:
 	if initial_target != null and is_instance_valid(initial_target) and initial_target.hp > 0.0:
 		initial_target.take_damage(ELECTRIC_DAMAGE)
 		_try_apply_paralysis(initial_target)
+		_try_spawn_thunderstorm_cloud(initial_target)
 		visited.append(initial_target)
 		chain_positions.append(initial_target.global_position)
 	else:
@@ -202,6 +227,7 @@ func _try_electric_chain(initial_target, hit_position: Vector2) -> void:
 			break
 		next_target.take_damage(ELECTRIC_DAMAGE)
 		_try_apply_paralysis(next_target)
+		_try_spawn_thunderstorm_cloud(next_target)
 		visited.append(next_target)
 		chain_positions.append(next_target.global_position)
 		jumps_remaining -= 1
@@ -229,6 +255,28 @@ func _try_apply_paralysis(target) -> void:
 		ELECTRIC_PARALYSIS_DAMAGE_PER_SECOND,
 		ELECTRIC_PARALYSIS_SPEED_MULTIPLIER
 	)
+
+
+# 电属性雷暴进阶升级:对被连锁闪电命中的目标按 ELECTRIC_THUNDERSTORM_TRIGGER_CHANCE 概率
+# 在目标位置生成一个雷暴乌云(ThunderCloud)。乌云持续 ELECTRIC_THUNDERSTORM_DURATION 秒,
+# 每 ELECTRIC_THUNDERSTORM_STRIKE_INTERVAL 秒对范围内其他敌人造成 ELECTRIC_THUNDERSTORM_DAMAGE
+# 伤害,并画一道闪电(BoltFlash)。乌云只调用 take_damage,不会递归触发 weapon hit / 连锁。
+func _try_spawn_thunderstorm_cloud(target) -> void:
+	if not _electric_thunderstorm_unlocked:
+		return
+	if target == null or not is_instance_valid(target) or target.hp <= 0.0:
+		return
+	if randf() > ELECTRIC_THUNDERSTORM_TRIGGER_CHANCE:
+		return
+	var cloud := ThunderCloud.new()
+	cloud.duration = ELECTRIC_THUNDERSTORM_DURATION
+	cloud.color = ELEMENT_COLORS[ELEMENT_ELECTRIC]
+	cloud.position = target.global_position
+	cloud.enemies_layer = enemies_layer
+	cloud.strike_damage = ELECTRIC_THUNDERSTORM_DAMAGE
+	cloud.strike_interval = ELECTRIC_THUNDERSTORM_STRIKE_INTERVAL
+	cloud.strike_range = ELECTRIC_THUNDERSTORM_RANGE
+	enemies_layer.add_child(cloud)
 
 
 # 在 center 的 radius_sq 范围内找最近的、未在 exclude_list 中出现过的存活敌人。
@@ -385,3 +433,118 @@ class PoisonPool:
 		draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, Color(color.r, color.g, color.b, edge_alpha), 3.0)
 		# 内圈描边:强调中心位置,便于玩家识别毒地生成点。
 		draw_arc(Vector2.ZERO, radius * 0.5, 0.0, TAU, 32, Color(color.r, color.g, color.b, edge_alpha * 0.6), 2.0)
+
+
+# 雷暴乌云:在 enemies_layer 上保留 duration 秒,每 strike_interval 秒自动劈离它最近的 1 个敌人,
+# 造成 strike_damage 伤害,并画一道闪电(BoltFlash)。
+# 索敌范围 = strike_range(从乌云位置起算),仅在该范围内找最近敌人;范围内无敌人则本轮不劈。
+# 不递归触发连锁闪电/火/毒/冰,只调用 take_damage。
+# 首次打击延迟一个 strike_interval,避免生成瞬间就劈(给玩家视觉缓冲)。
+class ThunderCloud:
+	extends Node2D
+
+	# 乌云视觉半径(仅用于绘制,不影响索敌)。
+	const CLOUD_VISUAL_RADIUS := 60.0
+
+	var duration := 10.0
+	var color := Color(1.0, 0.95, 0.20, 1.0)
+	var enemies_layer: Node2D
+	var strike_damage := 100.0
+	var strike_interval := 1.0
+	var strike_range := 1144.0
+	var _remaining := 0.0
+	var _strike_timer := 0.0
+	var _pulse_phase := 0.0
+
+
+	func _ready() -> void:
+		_remaining = duration
+		_strike_timer = strike_interval
+		queue_redraw()
+
+
+	func _process(delta: float) -> void:
+		_remaining -= delta
+		_pulse_phase += delta
+		if _remaining <= 0.0:
+			queue_free()
+			return
+		_strike_timer -= delta
+		if _strike_timer <= 0.0:
+			_strike_timer = strike_interval
+			_strike_nearest_enemy()
+		queue_redraw()
+
+
+	# 在 strike_range 范围内(从乌云位置起算)找最近的存活敌人劈下;范围内无敌人则跳过本轮。
+	func _strike_nearest_enemy() -> void:
+		if enemies_layer == null:
+			return
+		var range_sq := strike_range * strike_range
+		var best = null
+		var best_dist_sq := range_sq
+		for child in enemies_layer.get_children():
+			if not child.is_in_group("enemy") or not is_instance_valid(child) or child.hp <= 0.0:
+				continue
+			var d := global_position.distance_squared_to(child.global_position)
+			if d < best_dist_sq:
+				best_dist_sq = d
+				best = child
+		if best == null:
+			return
+		best.take_damage(strike_damage)
+		_spawn_bolt(best.global_position)
+
+
+	func _spawn_bolt(target_position: Vector2) -> void:
+		var bolt := BoltFlash.new()
+		bolt.cloud_position = global_position
+		bolt.target_positions = [target_position]
+		bolt.color = color
+		enemies_layer.add_child(bolt)
+
+
+	func _draw() -> void:
+		# 乌云主体:深灰紫色半透明圆,带脉冲让玩家察觉这是持续效果。
+		var pulse := 0.85 + 0.15 * sin(_pulse_phase * 4.0)
+		var cloud_fill := Color(0.20, 0.18, 0.28, 0.55 * pulse)
+		var cloud_edge := Color(0.35, 0.32, 0.45, 0.75)
+		draw_circle(Vector2.ZERO, CLOUD_VISUAL_RADIUS, cloud_fill)
+		draw_arc(Vector2.ZERO, CLOUD_VISUAL_RADIUS, 0.0, TAU, 32, cloud_edge, 2.0)
+
+
+# 雷暴乌云劈下的闪电视觉:从乌云位置到每个被击中敌人画一条锯齿折线,0.2s 内淡出后自动销毁。
+# 节点挂在 enemies_layer 上(原点 = 世界原点),draw 时直接使用世界坐标。
+class BoltFlash:
+	extends Node2D
+
+	var cloud_position := Vector2.ZERO
+	var target_positions := []
+	var color := Color.YELLOW
+
+
+	func _ready() -> void:
+		queue_redraw()
+		var tw := create_tween()
+		tw.tween_property(self, "modulate:a", 0.0, 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+		tw.tween_callback(queue_free)
+
+
+	func _draw() -> void:
+		for target in target_positions:
+			_draw_jagged_line(cloud_position, Vector2(target))
+
+
+	func _draw_jagged_line(from: Vector2, to: Vector2) -> void:
+		# 在 from -> to 之间插入 4 段锯齿,垂直方向随机抖动模拟闪电轨迹。
+		var jagged := PackedVector2Array()
+		var segments := 4
+		for i in range(segments + 1):
+			var t := float(i) / float(segments)
+			var p := from.lerp(to, t)
+			if i > 0 and i < segments:
+				var dir := (to - from).normalized()
+				var perp := Vector2(-dir.y, dir.x)
+				p += perp * (randf() - 0.5) * 18.0
+			jagged.append(p)
+		draw_polyline(jagged, color, 2.5)

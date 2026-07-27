@@ -23,7 +23,7 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 80, 100, 120, 200, 220, 240, 260, 280, 290, 300, 320, 400]
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.1.23"
+const GAME_VERSION := "v1.1.24"
 const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
@@ -223,6 +223,7 @@ var element_upgrade_defs := [
 var element_advanced_upgrade_defs := [
 	{"id": "poison_pool", "element": "poison", "advanced": true, "title": "Poison Pool", "desc": "On poison hit: 50% chance to spawn a poison pool (radius 100, 5s). Enemies in pool refresh poison and are slowed by 30%.", "weight": 200},
 	{"id": "electric_paralysis", "element": "electric", "advanced": true, "title": "Electric Paralysis", "desc": "On electric chain hit: 40% chance to paralyze for 5s. Paralyzed enemies take 20 damage/sec and cannot move.", "weight": 200},
+	{"id": "electric_thunderstorm", "element": "electric", "advanced": true, "title": "Thunder Storm", "desc": "On electric chain hit: 40% chance to spawn a thunder cloud (10s). Cloud auto-strikes the nearest enemy within bullet range every 1s for 100 damage.", "weight": 200},
 ]
 
 var player
@@ -878,14 +879,18 @@ func _build_normal_upgrade_pool() -> Array:
 
 
 # 进阶升级池:仅包含「基础元素已解锁 + 进阶升级未解锁」的项;一次性,选中后不再出现。
+# 电属性的两个进阶升级(paralysis / thunderstorm)互斥:已解锁任一,另一个不再进入池子。
 func _build_advanced_upgrade_pool() -> Array:
 	var pool := []
+	var electric_advanced_acquired := _acquired_upgrades.has("electric_paralysis") or _acquired_upgrades.has("electric_thunderstorm")
 	for def in element_advanced_upgrade_defs:
 		var element_id := str(def["element"])
 		if combat_effects == null or not combat_effects.is_element_unlocked(element_id):
 			continue
 		var upgrade_id := str(def["id"])
 		if _acquired_upgrades.has(upgrade_id):
+			continue
+		if element_id == "electric" and electric_advanced_acquired:
 			continue
 		pool.append(def)
 	return pool
@@ -1021,6 +1026,8 @@ func _choose_advanced_upgrade(upgrade_id: String) -> void:
 				combat_effects.unlock_poison_pool()
 			"electric_paralysis":
 				combat_effects.unlock_electric_paralysis()
+			"electric_thunderstorm":
+				combat_effects.unlock_electric_thunderstorm()
 	_finish_level_up()
 
 

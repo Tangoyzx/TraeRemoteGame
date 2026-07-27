@@ -88,6 +88,11 @@ func apply_debuff(debuff_id: String, duration: float, damage_per_second: float, 
 	}
 
 
+# 查询某个 debuff 当前是否生效(remaining > 0)。供 BossShooter 等子类在开火逻辑里判断。
+func has_debuff(debuff_id: String) -> bool:
+	return _debuffs.has(debuff_id)
+
+
 func _update_debuffs(delta: float) -> void:
 	if _debuffs.is_empty() or hp <= 0.0:
 		return

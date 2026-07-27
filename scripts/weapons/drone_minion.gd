@@ -1,4 +1,4 @@
-﻿class_name DroneMinion
+class_name DroneMinion
 extends Node2D
 
 const StatMath := preload("res://scripts/stat_math.gd")
@@ -107,11 +107,14 @@ func _process(delta: float) -> void:
 			alive.append(minion)
 	_minions = alive
 	# 生成倒计时:仅在有空位时推进;满员时重置,空位出现后从 0 开始计完整间隔。
+	# 计满一个间隔后一次性把所有空位补齐(可生成几个就一次生成几个)。
 	if _minions.size() < _max_minions:
 		_spawn_timer += delta
 		if _spawn_timer >= _spawn_interval:
 			_spawn_timer = 0.0
-			_spawn_minion()
+			var to_spawn := _max_minions - _minions.size()
+			for i in to_spawn:
+				_spawn_minion()
 	else:
 		_spawn_timer = 0.0
 	# 推进每个小兵的状态机。

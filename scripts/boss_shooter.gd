@@ -24,9 +24,14 @@ func setup_projectiles(layer: Node2D, projectile_scene) -> void:
 
 
 # 调用 super._process 继承 Enemy 的移动 + debuff 更新,再叠加开火逻辑。
+# 麻痹状态下既不累计 _fire_timer 也不开火:玩家用电网把 BossShooter 钉住后,
+# 不应让它在后台默默攒计时器、解除麻痹瞬间立即发射;恢复后需重新等满 FIRE_INTERVAL。
 func _process(delta: float) -> void:
 	super(delta)
 	if target == null or not is_instance_valid(target):
+		return
+	# "paralysis" 与 combat_effects.gd 的 DEBUFF_ID_PARALYSIS 保持一致。
+	if has_debuff("paralysis"):
 		return
 	_fire_timer += delta
 	if _fire_timer >= FIRE_INTERVAL:
