@@ -14,6 +14,7 @@ const LASER_CHAIN_DELAY := 0.5
 const THUNDER_BALL_LEVEL_ONE_DAMAGE := 25
 const THUNDER_BALL_EXPLOSION_RADIUS := 100.0
 const PARALYSIS_DURATION := 5.0
+const LASER_CLOUD_DURATION := 10.0
 
 var player
 var enemies_layer: Node2D
@@ -21,7 +22,9 @@ var effects_layer: Node2D
 var basic_attack
 var _upgrade_levels := {}
 var _clouds := []
+var _temporary_clouds := []
 var _ball_spawn_timer := 0.0
+var _laser_cloud_progress := 0
 var _active := true
 
 func _ready() -> void:
@@ -32,8 +35,8 @@ func setup(owner_player, enemy_container: Node2D, effect_container: Node2D, atta
 	enemies_layer = enemy_container
 	effects_layer = effect_container
 	basic_attack = attack
-	if basic_attack != null and not basic_attack.shot_fired.is_connected(_on_basic_attack_fired):
-		basic_attack.shot_fired.connect(_on_basic_attack_fired)
+	if basic_attack != null and not basic_attack.enemy_damaged.is_connected(_on_basic_attack_enemy_damaged):
+		basic_attack.enemy_damaged.connect(_on_basic_attack_enemy_damaged)
 
 func set_upgrade_level(upgrade_id: String, level: int) -> void:
 	var previous_level: int = int(_upgrade_levels.get(upgrade_id, 0))
@@ -68,11 +71,12 @@ func stop() -> void:
 	_active = false
 	set_process(false)
 
-func _on_basic_attack_fired(_target) -> void:
+func _on_basic_attack_enemy_damaged(enemy, hit_position: Vector2) -> void:
 	var laser_level := get_upgrade_level("laser")
 	if laser_level <= 0 or not _roll_level_chance(laser_level):
 		return
-	spawn_laser(player.global_position)
+	var target_id: int = int(enemy.get_instance_id()) if enemy != null and is_instance_valid(enemy) else 0
+	spawn_laser_at_position(player.global_position, hit_position, target_id)
 
 func spawn_laser(origin: Vector2, excluded_target_id: int = 0) -> void:
 	if not _active or enemies_layer == null or effects_layer == null:
@@ -80,7 +84,17 @@ func spawn_laser(origin: Vector2, excluded_target_id: int = 0) -> void:
 	var target = _pick_random_enemy(excluded_target_id)
 	if target == null:
 		return
-	var target_position: Vector2 = target.global_position
+	_fire_laser_at_target(origin, target)
+
+func spawn_laser_at_position(origin: Vector2, target_position: Vector2, target_id: int = 0) -> void:
+	if not _active or enemies_layer == null or effects_layer == null:
+		return
+	_fire_laser_at_position(origin, target_position, target_id)
+
+func _fire_laser_at_target(origin: Vector2, target) -> void:
+	_fire_laser_at_position(origin, target.global_position, target.get_instance_id())
+
+func _fire_laser_at_position(origin: Vector2, target_position: Vector2, target_id: int) -> void:
 	var direction := target_position - origin
 	if direction.length_squared() <= 0.001:
 		direction = Vector2.RIGHT
@@ -92,9 +106,37 @@ func spawn_laser(origin: Vector2, excluded_target_id: int = 0) -> void:
 	var beam = LaserBeamScene.new()
 	beam.setup(origin, direction, LASER_LENGTH, beam_width)
 	effects_layer.add_child(beam)
+	_register_laser_for_cloud()
 	var chain_level := get_upgrade_level("laser_chain")
 	if chain_level > 0 and _roll_level_chance(chain_level):
-		_schedule_laser_chain(target_position, target.get_instance_id())
+		_schedule_laser_chain(target_position, target_id)
+
+func _register_laser_for_cloud() -> void:
+	var cloud_level := get_upgrade_level("laser_cloud")
+	if cloud_level <= 0:
+		return
+	_laser_cloud_progress += 1
+	var required_count := _get_laser_cloud_required_count(cloud_level)
+	while _laser_cloud_progress >= required_count:
+		_laser_cloud_progress -= required_count
+		_spawn_temporary_cloud()
+
+func _get_laser_cloud_required_count(level: int) -> int:
+	match level:
+		1:
+			return 20
+		2:
+			return 15
+		_:
+			return 10
+
+func _spawn_temporary_cloud() -> void:
+	if not _active or player == null or effects_layer == null:
+		return
+	var cloud = ThunderCloudScene.new()
+	cloud.setup(self, player, player.global_position + Vector2(0.0, -100.0), LASER_CLOUD_DURATION)
+	effects_layer.add_child(cloud)
+	_temporary_clouds.append(cloud)
 
 func _schedule_laser_chain(next_origin: Vector2, excluded_target_id: int) -> void:
 	await get_tree().create_timer(LASER_CHAIN_DELAY, false).timeout
@@ -126,7 +168,7 @@ func _distance_squared_to_segment(point: Vector2, start: Vector2, end: Vector2) 
 
 func assign_cloud_target(requesting_cloud):
 	var reserved_ids := {}
-	for cloud in _clouds:
+	for cloud in _get_all_clouds():
 		if cloud == requesting_cloud or cloud == null or not is_instance_valid(cloud):
 			continue
 		var cloud_target = cloud.target
@@ -216,6 +258,16 @@ func _prune_clouds() -> void:
 		if cloud != null and is_instance_valid(cloud):
 			valid_clouds.append(cloud)
 	_clouds = valid_clouds
+	var valid_temporary_clouds := []
+	for cloud in _temporary_clouds:
+		if cloud != null and is_instance_valid(cloud):
+			valid_temporary_clouds.append(cloud)
+	_temporary_clouds = valid_temporary_clouds
+
+func _get_all_clouds() -> Array:
+	var all_clouds := _clouds.duplicate()
+	all_clouds.append_array(_temporary_clouds)
+	return all_clouds
 
 func _pick_random_enemy(excluded_target_id: int = 0):
 	var candidates := []

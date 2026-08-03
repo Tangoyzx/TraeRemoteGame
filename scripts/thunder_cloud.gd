@@ -1,7 +1,7 @@
 class_name ThunderCloud
 extends Node2D
 
-const MOVE_SPEED := 200.0
+const MOVE_SPEED := 400.0
 const FOLLOW_HEIGHT := 100.0
 const STRIKE_DAMAGE := 50.0
 const FOLLOW_EPSILON := 8.0
@@ -10,11 +10,13 @@ var controller
 var player
 var target
 var _strike_timer := 0.0
+var _lifetime_remaining := -1.0
 
-func setup(skill_controller, owner_player, spawn_position: Vector2) -> void:
+func setup(skill_controller, owner_player, spawn_position: Vector2, lifetime: float = -1.0) -> void:
 	controller = skill_controller
 	player = owner_player
 	global_position = spawn_position
+	_lifetime_remaining = lifetime
 
 func _ready() -> void:
 	add_to_group("player_attack")
@@ -22,6 +24,11 @@ func _ready() -> void:
 	queue_redraw()
 
 func _process(delta: float) -> void:
+	if _lifetime_remaining > 0.0:
+		_lifetime_remaining -= delta
+		if _lifetime_remaining <= 0.0:
+			queue_free()
+			return
 	if controller == null or not is_instance_valid(controller) or player == null or not is_instance_valid(player):
 		return
 	var interval: float = controller.get_cloud_attack_interval()

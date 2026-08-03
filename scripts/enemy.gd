@@ -1,15 +1,17 @@
-class_name Enemy
+﻿class_name Enemy
 extends Area2D
 
 signal died(enemy: Enemy)
 
-var enemy_name := "Basic"
+var enemy_name := "Chaser"
 var radius := 18.0
 var max_hp := 100.0
 var hp := 100.0
 var damage := 100
-var speed := 115.0
-var score_value := 1
+var speed := 190.0
+var score_value := 2
+var shape_type := "square"
+var tier := 1
 var body_color := Color(0.92, 0.20, 0.20, 1.0)
 var outline_color := Color(1.0, 0.68, 0.68, 1.0)
 var target: Node2D
@@ -30,13 +32,18 @@ func apply_config(config: Dictionary) -> void:
 	damage = int(config.get("damage", damage))
 	speed = float(config.get("speed", speed))
 	score_value = int(config.get("score_value", score_value))
+	shape_type = str(config.get("shape", shape_type))
+	tier = int(config.get("tier", tier))
 	body_color = config.get("body_color", body_color)
 	outline_color = config.get("outline_color", outline_color)
 
+func apply_runtime_scaling(hp_multiplier: float, speed_multiplier: float) -> void:
+	max_hp = maxf(1.0, max_hp * hp_multiplier)
+	hp = max_hp
+	speed *= speed_multiplier
+
 func _process(delta: float) -> void:
-	if target == null or not is_instance_valid(target):
-		return
-	if is_paralyzed():
+	if target == null or not is_instance_valid(target) or is_paralyzed():
 		return
 	var offset := target.global_position - global_position
 	if offset.length() > 1.0:
@@ -87,8 +94,41 @@ func _create_collision() -> void:
 	add_child(collision)
 
 func _draw() -> void:
-	draw_circle(Vector2.ZERO, radius, body_color)
-	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 32, outline_color, 2.0)
+	match shape_type:
+		"triangle":
+			_draw_triangle()
+		"diamond":
+			_draw_diamond()
+		_:
+			_draw_square()
+
+func _draw_square() -> void:
+	var rect := Rect2(Vector2(-radius, -radius), Vector2(radius * 2.0, radius * 2.0))
+	draw_rect(rect, body_color, true)
+	draw_rect(rect, outline_color, false, 3.0)
+
+func _draw_triangle() -> void:
+	var points := PackedVector2Array([
+		Vector2(0.0, -radius),
+		Vector2(radius * 0.90, radius * 0.70),
+		Vector2(-radius * 0.90, radius * 0.70),
+	])
+	draw_colored_polygon(points, body_color)
+	var outline := PackedVector2Array(points)
+	outline.append(points[0])
+	draw_polyline(outline, outline_color, 3.0, true)
+
+func _draw_diamond() -> void:
+	var points := PackedVector2Array([
+		Vector2(0.0, -radius),
+		Vector2(radius, 0.0),
+		Vector2(0.0, radius),
+		Vector2(-radius, 0.0),
+	])
+	draw_colored_polygon(points, body_color)
+	var outline := PackedVector2Array(points)
+	outline.append(points[0])
+	draw_polyline(outline, outline_color, 3.0, true)
 
 class ParalysisVisual:
 	extends Node2D

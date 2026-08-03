@@ -2,6 +2,7 @@ extends Node2D
 
 const PlayerScene := preload("res://scripts/player.gd")
 const EnemyScene := preload("res://scripts/enemy.gd")
+const RangedEnemyScene := preload("res://scripts/ranged_enemy.gd")
 const ProjectileScene := preload("res://scripts/projectile.gd")
 const BasicAttackScene := preload("res://scripts/basic_attack.gd")
 const ElectricSkillControllerScene := preload("res://scripts/electric_skill_controller.gd")
@@ -9,7 +10,6 @@ const ElectricSkillControllerScene := preload("res://scripts/electric_skill_cont
 const BossScene := preload("res://scripts/boss.gd")
 const BossShooterScene := preload("res://scripts/boss_shooter.gd")
 const BossIntroScene := preload("res://scripts/boss_intro.gd")
-const TurretScene := preload("res://scripts/turret.gd")
 const EnemyProjectileScene := preload("res://scripts/enemy_projectile.gd")
 
 const VIEWPORT_SIZE := Vector2(1280.0, 720.0)
@@ -18,13 +18,14 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 # 各等级升级所需累计积分(下标 = 等级 - 1)。超出此列表的等级不再触发升级。
 # TODO(临时调试): 第3级 100->40, 第4级 200->60;新增 Level 5-12(80/100/120/200/220/240/260)便于测试后期等级。
 #                    调试完成后需确认正式积分曲线。
-const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 80, 100, 120, 200, 220, 240, 260, 280, 290, 300, 320, 400]
+const LEVEL_REQUIRED_SCORES := [0, 15, 35, 60, 90, 125, 165, 215, 270, 330, 400, 480, 570, 670, 780, 800]
 const UPGRADES_ENABLED := true
 const MAX_UPGRADE_LEVEL := 3
 const UPGRADE_OPTIONS := {
 	"laser": {"title": "镭射炮", "prerequisite": ""},
 	"laser_width": {"title": "镭射炮·宽", "prerequisite": "laser"},
 	"laser_chain": {"title": "镭射炮·连", "prerequisite": "laser"},
+	"laser_cloud": {"title": "镭射炮·云", "prerequisite": "laser"},
 	"thunder_cloud": {"title": "雷云", "prerequisite": ""},
 	"thunder_cloud_ball": {"title": "雷云·球", "prerequisite": "thunder_cloud"},
 	"thunder_cloud_haste": {"title": "雷云·疾", "prerequisite": "thunder_cloud"},
@@ -32,121 +33,47 @@ const UPGRADE_OPTIONS := {
 	"thunder_ball_laser": {"title": "雷球·炮", "prerequisite": "thunder_ball"},
 	"thunder_ball_paralysis": {"title": "雷球·麻", "prerequisite": "thunder_ball"},
 }
-# 游戏版本号,显示在屏幕顶部居中。
-# 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.2.2"
-const BASIC_ENEMY_RADIUS := 18.0
-const BASIC_ENEMY_SPEED := 115.0
+const GAME_VERSION := "v1.2.3"
 const ENEMY_CONFIGS := {
-	"basic": {
-		"name": "Basic",
-		"radius": BASIC_ENEMY_RADIUS,
-		"max_hp": 100.0,
-		"damage": 100,
-		"speed": BASIC_ENEMY_SPEED,
-		"score_value": 1,
-		"body_color": Color(0.92, 0.20, 0.20, 1.0),
-		"outline_color": Color(1.0, 0.68, 0.68, 1.0),
-	},
-	"chubby": {
-		"name": "Chubby",
-		"radius": BASIC_ENEMY_RADIUS * 1.2,
-		"max_hp": 300.0,
-		"damage": 200,
-		"speed": BASIC_ENEMY_SPEED * 0.8,
-		"score_value": 2,
-		"body_color": Color(0.80, 0.34, 0.95, 1.0),
-		"outline_color": Color(0.96, 0.75, 1.0, 1.0),
-	},
-	# 固定炮塔:不动,远距离朝玩家发射子弹。hp 与 chubby 同档,伤害=玩家子弹
-	# 基础伤害(100=1 玩家 HP),score_value 给 5(处理难度高于普通小怪)。
-	# speed 字段对炮塔无意义(重写了 _process),保留 0 仅满足 config 结构。
-	"turret": {
-		"name": "Turret",
-		"radius": BASIC_ENEMY_RADIUS,
-		"max_hp": 300.0,
-		"damage": 100,
-		"speed": 0.0,
-		"score_value": 5,
-		"body_color": Color(1.0, 1.0, 1.0, 1.0),
-		"outline_color": Color(0.55, 0.55, 0.55, 1.0),
-	},
+	"chaser_1": {"name":"Chaser I", "behavior":"chaser", "shape":"square", "tier":1, "radius":18.0, "max_hp":100.0, "damage":100, "speed":190.0, "score_value":2, "body_color":Color(0.76,0.18,0.20,1.0), "outline_color":Color(1.0,0.56,0.58,1.0)},
+	"chaser_2": {"name":"Chaser II", "behavior":"chaser", "shape":"square", "tier":2, "radius":20.0, "max_hp":200.0, "damage":100, "speed":200.0, "score_value":3, "body_color":Color(0.88,0.25,0.18,1.0), "outline_color":Color(1.0,0.72,0.50,1.0)},
+	"chaser_3": {"name":"Chaser III", "behavior":"chaser", "shape":"square", "tier":3, "radius":22.0, "max_hp":350.0, "damage":100, "speed":210.0, "score_value":5, "body_color":Color(0.92,0.08,0.34,1.0), "outline_color":Color(1.0,0.72,0.84,1.0)},
+	"ranged_1": {"name":"Ranged I", "behavior":"ranged", "shape":"triangle", "tier":1, "radius":18.0, "max_hp":100.0, "damage":100, "speed":145.0, "score_value":3, "body_color":Color(0.30,0.72,0.96,1.0), "outline_color":Color(0.76,0.94,1.0,1.0), "preferred_distance_min":420.0, "preferred_distance_max":600.0, "fire_interval":3.5, "fire_range":900.0, "projectile_speed":260.0, "projectile_damage":100.0},
+	"ranged_2": {"name":"Ranged II", "behavior":"ranged", "shape":"triangle", "tier":2, "radius":20.0, "max_hp":175.0, "damage":100, "speed":155.0, "score_value":5, "body_color":Color(0.36,0.42,0.98,1.0), "outline_color":Color(0.78,0.82,1.0,1.0), "preferred_distance_min":420.0, "preferred_distance_max":600.0, "fire_interval":3.0, "fire_range":900.0, "projectile_speed":285.0, "projectile_damage":100.0},
+	"ranged_3": {"name":"Ranged III", "behavior":"ranged", "shape":"triangle", "tier":3, "radius":22.0, "max_hp":300.0, "damage":100, "speed":165.0, "score_value":7, "body_color":Color(0.62,0.24,0.94,1.0), "outline_color":Color(0.92,0.74,1.0,1.0), "preferred_distance_min":420.0, "preferred_distance_max":600.0, "fire_interval":2.5, "fire_range":900.0, "projectile_speed":310.0, "projectile_damage":100.0},
+	"fast_1": {"name":"Runner I", "behavior":"chaser", "shape":"diamond", "tier":1, "radius":12.0, "max_hp":50.0, "damage":100, "speed":250.0, "score_value":1, "body_color":Color(0.98,0.78,0.16,1.0), "outline_color":Color(1.0,0.96,0.62,1.0)},
+	"fast_2": {"name":"Runner II", "behavior":"chaser", "shape":"diamond", "tier":2, "radius":13.0, "max_hp":50.0, "damage":100, "speed":270.0, "score_value":2, "body_color":Color(0.98,0.48,0.12,1.0), "outline_color":Color(1.0,0.82,0.48,1.0)},
+	"fast_3": {"name":"Runner III", "behavior":"chaser", "shape":"diamond", "tier":3, "radius":14.0, "max_hp":50.0, "damage":100, "speed":290.0, "score_value":2, "body_color":Color(1.0,0.18,0.54,1.0), "outline_color":Color(1.0,0.72,0.88,1.0)},
 }
 const SPAWN_STRATEGY := [
-	{
-		"start_time": 0.0,
-		"rates": {
-			"basic": 20.0,
-		},
-	},
-	{
-		"start_time": 20.0,
-		"rates": {
-			"basic": 40.0,
-		},
-	},
-	{
-		"start_time": 40.0,
-		"rates": {
-			"basic": 40.0,
-			"chubby": 10.0,
-		},
-	},
-	{
-		"start_time": 60.0,
-		"rates": {
-			"basic": 40.0,
-			"chubby": 10.0,
-			# turret 速率 0.1 = 每 10 秒尝试生成 1 个,实际数量受 MAX_TURRETS=3 限制。
-			"turret": 0.1,
-		},
-	},
+	{"start_time":0.0, "rates":{"chaser_1":14.0}},
+	{"start_time":60.0, "rates":{"chaser_1":16.0, "fast_1":4.0}},
+	{"start_time":120.0, "rates":{"chaser_1":18.0, "ranged_1":3.0, "fast_1":7.0}},
+	{"start_time":180.0, "rates":{"chaser_1":18.0, "ranged_1":5.0, "fast_1":8.0}},
+	{"start_time":240.0, "rates":{"chaser_1":14.0, "chaser_2":8.0, "ranged_1":6.0, "fast_1":10.0}},
+	{"start_time":300.0, "rates":{"chaser_1":10.0, "chaser_2":14.0, "ranged_1":4.0, "ranged_2":4.0, "fast_1":6.0, "fast_2":8.0}},
+	{"start_time":360.0, "rates":{"chaser_2":20.0, "ranged_1":3.0, "ranged_2":7.0, "fast_2":14.0}},
+	{"start_time":420.0, "rates":{"chaser_2":20.0, "chaser_3":6.0, "ranged_2":8.0, "fast_2":16.0}},
+	{"start_time":480.0, "rates":{"chaser_2":15.0, "chaser_3":12.0, "ranged_2":6.0, "ranged_3":5.0, "fast_2":10.0, "fast_3":10.0}},
+	{"start_time":540.0, "rates":{"chaser_2":10.0, "chaser_3":20.0, "ranged_2":4.0, "ranged_3":8.0, "fast_3":20.0}},
 ]
-# Boss 配置表:每个 boss 类型携带独立数值。
-# 玩家:RADIUS=20, SPEED=230, MAX_HP=300。Big Brother 按 3x 体型 / 25% 速度。
 const BOSS_CONFIGS := {
-	"big_brother": {
-		"boss_name": "Big Brother",
-		"radius": 60.0,        # 玩家 20 * 3
-		"max_hp": 2000.0,
-		"damage": 300,
-		"speed": 57.5,         # 玩家 230 * 25%
-		"score_value": 50,
-		"body_color": Color(0.75, 0.18, 0.22, 1.0),
-		"outline_color": Color(1.0, 0.55, 0.55, 1.0),
-	},
-	# 会开火的 Big Brother 变体:继承移动(追玩家)+ 定时朝玩家发射子弹。
-	# shooter 标志由 _spawn_boss 判断,决定创建 BossShooterScene 并注入子弹体系。
-	# 伤害/血量同 big_brother;颜色改为橙色便于玩家识别。
-	"big_brother_shooter": {
-		"boss_name": "Big Brother",
-		"radius": 60.0,
-		"max_hp": 2000.0,
-		"damage": 300,
-		"speed": 57.5,
-		"score_value": 50,
-		"body_color": Color(0.95, 0.45, 0.12, 1.0),
-		"outline_color": Color(1.0, 0.78, 0.45, 1.0),
-		"shooter": true,
-	},
+	"square_boss": {"boss_name":"Square Colossus", "shape":"square", "tier":1, "radius":60.0, "max_hp":3000.0, "damage":100, "speed":105.0, "score_value":75, "body_color":Color(0.66,0.10,0.16,1.0), "outline_color":Color(1.0,0.50,0.52,1.0)},
+	"triangle_boss": {"boss_name":"Triangle Warden", "shape":"triangle", "tier":1, "radius":60.0, "max_hp":5000.0, "damage":100, "speed":205.0, "score_value":125, "body_color":Color(0.92,0.38,0.08,1.0), "outline_color":Color(1.0,0.82,0.45,1.0), "shooter":true, "preferred_distance_min":520.0, "preferred_distance_max":700.0, "fire_interval":1.8, "fire_range":1050.0, "projectile_speed":320.0, "projectile_damage":100.0},
 }
-# Boss 生成池:每次到点从池中随机选一个生成。
-const BOSS_SPAWN_POOL := ["big_brother", "big_brother_shooter"]
-# Boss 生成时机:第一个 boss 在游戏开始后 BOSS_FIRST_SPAWN_DELAY 秒生成
-# (相当于把第 0 秒当作"上一只 boss 刚死");之后每只 boss 死亡后再过
-# BOSS_NEXT_SPAWN_DELAY 秒生成下一只,同一时间最多存在一只 boss。
-const BOSS_FIRST_SPAWN_DELAY := 60.0
-const BOSS_NEXT_SPAWN_DELAY := 180.0
-const BOSS_SPAWN_DISTANCE := 360.0  # 生成在玩家可见区外此距离处
+const SCRIPTED_BOSS_SCHEDULE := [{"time":180.0,"type":"square_boss"},{"time":420.0,"type":"triangle_boss"}]
+const POST_TEN_BOSS_INTERVAL := 180.0
+const BOSS_DELAY_AFTER_DEATH := 10.0
+const BOSS_SPAWN_DISTANCE := 760.0
 const ENEMY_SPAWN_MARGIN := 140.0
 const MAX_ENEMIES := 120
-# 固定炮塔同时存活上限:独立于 MAX_ENEMIES,避免炮塔挤占普通敌人配额。
-# MAX_ENEMIES 仍作为绝对上限兜底(炮塔也是 enemies_layer 的子节点)。
-const MAX_TURRETS := 3
-# 炮塔生成在距离玩家 [MIN, MAX] 的环内,且整个身体落在地图边界内。
-# MIN > FIRE_RANGE(1280) 让玩家有反应时间,不会一出生就被开火打到。
-const TURRET_SPAWN_DIST_MIN := 1500.0
-const TURRET_SPAWN_DIST_MAX := 3000.0
+const MAX_RANGED_ENEMIES := 18
+const MAX_FAST_ENEMIES := 36
+const ENDLESS_START_TIME := 600.0
+const ENDLESS_RATE_GROWTH := 1.08
+const ENDLESS_HP_GROWTH := 1.12
+const ENDLESS_SPEED_GROWTH := 1.02
+const ENDLESS_FIRE_INTERVAL_DECAY := 0.97
 var player
 var camera: Camera2D
 var world_layer: Node2D
@@ -176,9 +103,11 @@ var _boss_intro
 var _boss_name_label: Label
 # 当前存活 boss 引用;为空表示当前没有 boss。
 var _active_boss = null
-# 下一个 boss 的生成时间(基于 elapsed_seconds)。
-var _next_boss_spawn_time := BOSS_FIRST_SPAWN_DELAY
-# Boss 血条 UI(屏幕顶部居中)。
+var _next_scripted_boss_index := 0
+var _pending_boss_queue := []
+var _pending_boss_ready_time := 0.0
+var _next_endless_boss_time := ENDLESS_START_TIME + POST_TEN_BOSS_INTERVAL
+var _endless_boss_index := 0
 var _boss_health_container: CenterContainer
 var _boss_health_name_label: Label
 var _boss_health_bar: ProgressBar
@@ -519,77 +448,87 @@ func _init_spawn_budgets() -> void:
 
 
 func _update_enemy_spawns(delta: float) -> void:
-	if player == null or enemies_layer == null or enemies_layer.get_child_count() >= MAX_ENEMIES:
+	if player == null or enemies_layer == null or _count_regular_enemies() >= MAX_ENEMIES:
 		return
 	var rates := _get_current_spawn_rates()
 	for enemy_type in rates.keys():
 		if not ENEMY_CONFIGS.has(enemy_type):
 			continue
 		_spawn_budgets[enemy_type] = float(_spawn_budgets.get(enemy_type, 0.0)) + float(rates[enemy_type]) / 60.0 * delta
-		while _spawn_budgets[enemy_type] >= 1.0 and enemies_layer.get_child_count() < MAX_ENEMIES:
-			# turret 单独限制同时存活数量;达上限时消耗 budget 等下次窗口,
-			# 避免 budget 持续累积导致旧 turret 一死就瞬间补一堆。
-			if enemy_type == "turret" and _count_turrets() >= MAX_TURRETS:
+		while _spawn_budgets[enemy_type] >= 1.0 and _count_regular_enemies() < MAX_ENEMIES:
+			if _is_enemy_category_capped(str(enemy_type)):
 				_spawn_budgets[enemy_type] -= 1.0
 				continue
-			_spawn_enemy(enemy_type)
+			_spawn_enemy(str(enemy_type))
 			_spawn_budgets[enemy_type] -= 1.0
-
 
 func _get_current_spawn_rates() -> Dictionary:
 	var current_rates := {}
 	for phase in SPAWN_STRATEGY:
 		if elapsed_seconds >= float(phase["start_time"]):
-			current_rates = phase["rates"]
+			current_rates = phase["rates"].duplicate()
 		else:
 			break
+	if elapsed_seconds >= ENDLESS_START_TIME:
+		var endless_minutes := int(floor((elapsed_seconds - ENDLESS_START_TIME) / 60.0)) + 1
+		var rate_multiplier := pow(ENDLESS_RATE_GROWTH, endless_minutes)
+		for enemy_type in current_rates.keys():
+			current_rates[enemy_type] = float(current_rates[enemy_type]) * rate_multiplier
 	return current_rates
 
-
 func _spawn_enemy(enemy_type: String) -> void:
-	if is_game_over or player == null or enemies_layer.get_child_count() >= MAX_ENEMIES:
+	if is_game_over or player == null or _count_regular_enemies() >= MAX_ENEMIES:
 		return
-	if enemy_type == "turret":
-		_spawn_turret()
-		return
-	var enemy := EnemyScene.new()
-	enemy.apply_config(ENEMY_CONFIGS[enemy_type])
+	var config: Dictionary = ENEMY_CONFIGS[enemy_type]
+	var is_ranged := str(config.get("behavior", "chaser")) == "ranged"
+	var enemy = RangedEnemyScene.new() if is_ranged else EnemyScene.new()
+	enemy.apply_config(config)
+	_apply_endless_enemy_scaling(enemy, enemy_type, is_ranged)
 	enemy.global_position = _get_spawn_position_near_view(enemy.radius)
 	enemy.target = player
 	enemy.died.connect(_on_enemy_died)
+	if is_ranged:
+		enemy.setup_projectiles(projectiles_layer, EnemyProjectileScene)
 	enemies_layer.add_child(enemy)
 
-
-# 炮塔专属生成:位置在玩家周围环形带内(整个地图范围,而非屏幕外),
-# 注入子弹 layer 与子弹场景供其开火使用。
-func _spawn_turret() -> void:
-	if is_game_over or player == null:
+func _apply_endless_enemy_scaling(enemy, enemy_type: String, is_ranged: bool) -> void:
+	if elapsed_seconds < ENDLESS_START_TIME:
 		return
-	var turret := TurretScene.new()
-	turret.apply_config(ENEMY_CONFIGS["turret"])
-	turret.global_position = _get_turret_spawn_position(turret.radius)
-	turret.target = player
-	turret.died.connect(_on_enemy_died)
-	turret.setup_projectiles(projectiles_layer, EnemyProjectileScene)
-	enemies_layer.add_child(turret)
+	var endless_minutes := int(floor((elapsed_seconds - ENDLESS_START_TIME) / 60.0)) + 1
+	var hp_multiplier := pow(ENDLESS_HP_GROWTH, endless_minutes)
+	var speed_multiplier := pow(ENDLESS_SPEED_GROWTH, endless_minutes)
+	var base_speed: float = float(ENEMY_CONFIGS[enemy_type]["speed"])
+	var speed_cap := 330.0 if enemy_type.begins_with("fast_") else (190.0 if is_ranged else 218.0)
+	speed_multiplier = minf(speed_multiplier, speed_cap / base_speed)
+	if is_ranged:
+		var fire_multiplier := pow(ENDLESS_FIRE_INTERVAL_DECAY, endless_minutes)
+		enemy.apply_runtime_scaling(hp_multiplier, speed_multiplier, fire_multiplier)
+	else:
+		enemy.apply_runtime_scaling(hp_multiplier, speed_multiplier)
 
+func _count_regular_enemies() -> int:
+	var count := 0
+	for child in enemies_layer.get_children():
+		if child.is_in_group("enemy") and not child.is_in_group("boss"):
+			count += 1
+	return count
 
-# 炮塔生成位置:玩家周围 [MIN, MAX] 距离的环内随机一点,clamp 到地图边界内。
-# MIN > FIRE_RANGE 让玩家有反应时间;MAX 限制不要太远避免炮塔孤立无意义。
-func _get_turret_spawn_position(edge_margin: float = 0.0) -> Vector2:
-	var center: Vector2 = player.global_position
-	var angle := randf() * TAU
-	var dist := randf_range(TURRET_SPAWN_DIST_MIN, TURRET_SPAWN_DIST_MAX)
-	var pos := center + Vector2(cos(angle), sin(angle)) * dist
-	return _clamp_to_map(pos, edge_margin)
+func _count_enemy_prefix(prefix: String) -> int:
+	var count := 0
+	for child in enemies_layer.get_children():
+		if child.is_in_group("boss"):
+			continue
+		if str(child.enemy_name).to_lower().begins_with(prefix):
+			count += 1
+	return count
 
+func _is_enemy_category_capped(enemy_type: String) -> bool:
+	if enemy_type.begins_with("ranged_"):
+		return _count_enemy_prefix("ranged") >= MAX_RANGED_ENEMIES
+	if enemy_type.begins_with("fast_"):
+		return _count_enemy_prefix("runner") >= MAX_FAST_ENEMIES
+	return false
 
-func _count_turrets() -> int:
-	return get_tree().get_nodes_in_group("turret").size()
-
-
-# 在玩家可见区外生成敌方单位。edge_margin 为实体半径,用于把 clamp 范围向内收,
-# 确保整个实体身体(含半径)都落在地图边界内,不会跨出边界。
 func _get_spawn_position_near_view(edge_margin: float = 0.0) -> Vector2:
 	var viewport_size := get_viewport_rect().size
 	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
@@ -644,35 +583,55 @@ func _on_enemy_died(enemy) -> void:
 	_check_level_up()
 
 
-# === Boss 生成与出场过场 ===
-# 第一个 boss 在游戏开始 BOSS_FIRST_SPAWN_DELAY 秒后生成;之后每只 boss
-# 死亡后再过 BOSS_NEXT_SPAWN_DELAY 秒生成下一只。过场进行中或仍有 boss
-# 存活时不安排新生成,避免同时出现多只 boss。
+# === Boss schedule and intro ===
 func _update_boss_spawns() -> void:
 	if _boss_intro != null:
 		return
-	# 当前还有 boss 存活,不安排新的生成
+	if _active_boss != null and not is_instance_valid(_active_boss):
+		_active_boss = null
+	_queue_due_scripted_bosses()
+	_queue_due_endless_bosses()
+	if _pending_boss_queue.is_empty() or elapsed_seconds < _pending_boss_ready_time:
+		return
 	if _active_boss != null and is_instance_valid(_active_boss):
 		return
-	if _active_boss != null:
-		# 引用已失效但未清理:做兜底,等下一帧再判断
-		_active_boss = null
-	if elapsed_seconds < _next_boss_spawn_time:
-		return
-	if BOSS_SPAWN_POOL.is_empty():
-		return
-	var boss_type: String = str(BOSS_SPAWN_POOL[randi() % BOSS_SPAWN_POOL.size()])
+	var boss_type := str(_pending_boss_queue.pop_front())
+	_pending_boss_ready_time = INF if not _pending_boss_queue.is_empty() else 0.0
 	_spawn_boss(boss_type)
 
+func _queue_due_scripted_bosses() -> void:
+	if _next_scripted_boss_index >= SCRIPTED_BOSS_SCHEDULE.size():
+		return
+	var entry: Dictionary = SCRIPTED_BOSS_SCHEDULE[_next_scripted_boss_index]
+	if elapsed_seconds < float(entry["time"]):
+		return
+	_queue_boss(str(entry["type"]))
+	_next_scripted_boss_index += 1
+
+func _queue_due_endless_bosses() -> void:
+	if elapsed_seconds < _next_endless_boss_time:
+		return
+	var boss_type := "square_boss" if _endless_boss_index % 2 == 0 else "triangle_boss"
+	_queue_boss(boss_type)
+	_endless_boss_index += 1
+	_next_endless_boss_time += POST_TEN_BOSS_INTERVAL
+
+func _queue_boss(boss_type: String) -> void:
+	_pending_boss_queue.append(boss_type)
+	if _pending_boss_queue.size() > 1:
+		return
+	_pending_boss_ready_time = elapsed_seconds
+	if _active_boss != null and is_instance_valid(_active_boss):
+		_pending_boss_ready_time = INF
 
 func _spawn_boss(boss_type: String) -> void:
 	if not BOSS_CONFIGS.has(boss_type):
 		return
 	var config: Dictionary = BOSS_CONFIGS[boss_type]
-	# shooter 标志决定创建会开火的 boss 变体;否则用普通 boss。
 	var is_shooter := bool(config.get("shooter", false))
 	var boss = BossShooterScene.new() if is_shooter else BossScene.new()
 	boss.apply_config(config)
+	_apply_endless_boss_scaling(boss, is_shooter)
 	boss.global_position = _get_boss_spawn_position(boss.radius)
 	boss.target = player
 	boss.died.connect(_on_enemy_died)
@@ -682,19 +641,26 @@ func _spawn_boss(boss_type: String) -> void:
 	enemies_layer.add_child(boss)
 	_active_boss = boss
 	_show_boss_health_bar(boss)
-	# 启动过场:暂停全树 → 镜头缓动到 boss → 显示名字+震动 → 回到玩家 → 解暂停
 	_start_boss_intro(boss)
 
+func _apply_endless_boss_scaling(boss, is_shooter: bool) -> void:
+	if elapsed_seconds < ENDLESS_START_TIME:
+		return
+	var boss_number := maxi(1, _endless_boss_index)
+	var hp_multiplier := pow(1.20, boss_number)
+	if is_shooter:
+		var fire_multiplier := pow(0.95, boss_number)
+		boss.set_fire_interval_floor(1.2)
+		boss.apply_runtime_scaling(hp_multiplier, 1.0, fire_multiplier)
+	else:
+		boss.apply_runtime_scaling(hp_multiplier, 1.0)
 
-# Boss 死亡:清理引用、隐藏血条,并从当前时间起安排下一只 boss 的生成。
-func _on_boss_died(boss) -> void:
+func _on_boss_died(_boss) -> void:
 	_active_boss = null
 	_hide_boss_health_bar()
-	_next_boss_spawn_time = elapsed_seconds + BOSS_NEXT_SPAWN_DELAY
+	if not _pending_boss_queue.is_empty():
+		_pending_boss_ready_time = elapsed_seconds + BOSS_DELAY_AFTER_DEATH
 
-
-# Boss 生成在玩家可见区外 BOSS_SPAWN_DISTANCE 处,在地图范围内 clamp。
-# edge_margin 为 boss 半径,确保整个 boss 身体落在地图边界内。
 func _get_boss_spawn_position(edge_margin: float = 0.0) -> Vector2:
 	var center: Vector2 = player.global_position
 	var angle := randf() * TAU

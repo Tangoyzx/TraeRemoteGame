@@ -1,8 +1,7 @@
-class_name Boss
+﻿class_name Boss
 extends Enemy
 
-# Boss reuses Enemy movement, health, damage, and death behavior.
-var boss_name := "Boss"
+var boss_name := "Square Colossus"
 
 func _ready() -> void:
 	super()

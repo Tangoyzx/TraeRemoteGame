@@ -1,7 +1,7 @@
 class_name BasicAttack
 extends Node
 
-signal shot_fired(target)
+signal enemy_damaged(enemy, hit_position)
 
 # Permanent player attack; not a skill or upgrade option.
 const FIRE_INTERVAL := 2.0
@@ -63,5 +63,8 @@ func _fire_at(enemy) -> void:
 		PROJECTILE_RADIUS,
 		PROJECTILE_LIFETIME
 	)
+	projectile.enemy_damaged.connect(_on_projectile_enemy_damaged)
 	projectiles_layer.add_child(projectile)
-	shot_fired.emit(enemy)
+
+func _on_projectile_enemy_damaged(enemy, hit_position: Vector2) -> void:
+	enemy_damaged.emit(enemy, hit_position)

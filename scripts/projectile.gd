@@ -1,11 +1,14 @@
 class_name Projectile
 extends Area2D
 
+signal enemy_damaged(enemy, hit_position)
+
 const DEFAULT_COLOR := Color(1.0, 0.86, 0.16, 1.0)
 var velocity := Vector2.ZERO
 var damage := 50.0
 var lifetime := 2.2
 var radius := 6.0
+var _has_hit := false
 
 func _ready() -> void:
 	add_to_group("projectile")
@@ -27,9 +30,14 @@ func _process(delta: float) -> void:
 		queue_free()
 
 func _on_area_entered(area: Area2D) -> void:
-	if area.is_in_group("enemy"):
-		area.take_damage(damage)
-		queue_free()
+	if _has_hit or not area.is_in_group("enemy"):
+		return
+	_has_hit = true
+	set_deferred("monitoring", false)
+	var hit_position: Vector2 = area.global_position
+	area.take_damage(damage)
+	enemy_damaged.emit(area, hit_position)
+	queue_free()
 
 func _create_collision() -> void:
 	var shape := CircleShape2D.new()
