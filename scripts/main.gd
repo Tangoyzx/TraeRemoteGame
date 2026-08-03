@@ -34,7 +34,7 @@ const UPGRADE_OPTIONS := {
 }
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.2.1"
+const GAME_VERSION := "v1.2.2"
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
 const ENEMY_CONFIGS := {
@@ -165,6 +165,7 @@ var restart_button: Button
 var level_up_overlay: ColorRect
 var level_up_title: Label
 var level_up_options_box: HBoxContainer
+var level_up_confirm_button: Button
 var score := 0
 var current_level := 0
 var is_game_over := false
@@ -182,6 +183,7 @@ var _boss_health_container: CenterContainer
 var _boss_health_name_label: Label
 var _boss_health_bar: ProgressBar
 var _upgrade_levels := {}
+var _pending_upgrade_id := ""
 
 
 func _ready() -> void:
@@ -428,6 +430,16 @@ func _build_level_up_ui() -> void:
 	level_up_options_box.add_theme_constant_override("separation", 28)
 	level_up_options_box.process_mode = Node.PROCESS_MODE_ALWAYS
 	content.add_child(level_up_options_box)
+
+	level_up_confirm_button = Button.new()
+	level_up_confirm_button.name = "ConfirmButton"
+	level_up_confirm_button.text = "CONFIRM"
+	level_up_confirm_button.custom_minimum_size = Vector2(240, 58)
+	level_up_confirm_button.add_theme_font_size_override("font_size", 28)
+	level_up_confirm_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	level_up_confirm_button.disabled = true
+	level_up_confirm_button.pressed.connect(_confirm_upgrade)
+	content.add_child(level_up_confirm_button)
 
 
 # Boss 血条:屏幕顶部居中,显示当前存活 boss 的名字与血量。
@@ -733,7 +745,13 @@ func _show_level_up_options(level: int) -> void:
 	if not UPGRADES_ENABLED or UPGRADE_OPTIONS.is_empty():
 		return
 	level_up_title.text = "Level %d - Choose an Upgrade" % level
+	_pending_upgrade_id = ""
+	if level_up_confirm_button != null:
+		level_up_confirm_button.disabled = true
 	for child in level_up_options_box.get_children():
+		# Remove immediately so back-to-back level-ups cannot leave old cards
+		# participating in layout or intercepting input until queue_free runs.
+		level_up_options_box.remove_child(child)
 		child.queue_free()
 	var candidates := _build_upgrade_pool()
 	candidates.shuffle()
@@ -762,68 +780,44 @@ func _build_upgrade_pool() -> Array:
 
 
 func _create_upgrade_card(option_id: String) -> Control:
-	var option: Dictionary = UPGRADE_OPTIONS[option_id]
 	var current_upgrade_level: int = int(_upgrade_levels.get(option_id, 0))
 	var next_upgrade_level := current_upgrade_level + 1
-	var card := VBoxContainer.new()
-	card.name = "Upgrade_%s" % option_id
-	card.custom_minimum_size = Vector2(200, 280)
-	card.alignment = BoxContainer.ALIGNMENT_CENTER
-	card.add_theme_constant_override("separation", 12)
-	card.process_mode = Node.PROCESS_MODE_ALWAYS
-
-	var title := Label.new()
-	title.text = "%s  Lv.%d -> Lv.%d" % [str(option["title"]), current_upgrade_level, next_upgrade_level]
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.add_theme_font_size_override("font_size", 22)
-	card.add_child(title)
-
-	var button := Button.new()
-	button.name = "SelectButton"
-	button.custom_minimum_size = Vector2(160, 110)
-	button.text = str(option["title"])
-	button.add_theme_font_size_override("font_size", 26)
+	var button := TextureButton.new()
+	button.name = "Upgrade_%s" % option_id
+	button.custom_minimum_size = Vector2(240, 315)
+	button.ignore_texture_size = true
+	button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	button.texture_normal = load(_get_upgrade_card_image_path(option_id, next_upgrade_level))
 	button.process_mode = Node.PROCESS_MODE_ALWAYS
-	button.pressed.connect(_choose_upgrade.bind(option_id))
-	card.add_child(button)
-
-	var description := Label.new()
-	description.text = _get_upgrade_description(option_id, next_upgrade_level)
-	description.custom_minimum_size = Vector2(190, 0)
-	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	description.add_theme_font_size_override("font_size", 16)
-	card.add_child(description)
-	return card
+	button.tooltip_text = ""
+	button.pressed.connect(_select_upgrade.bind(option_id))
+	return button
 
 
-func _get_upgrade_description(option_id: String, level: int) -> String:
-	var chance := level * 20
-	match option_id:
-		"laser":
-			return "基础射击后有 %d%% 概率发射贯穿镭射炮。" % chance
-		"laser_width":
-			return "镭射炮宽度增加 10px，总宽度达到 %dpx。" % (10 + level * 10)
-		"laser_chain":
-			return "镭射炮有 %d%% 概率在 0.5 秒后继续连射。" % chance
-		"thunder_cloud":
-			return "永久雷云数量增加到 %d 个。" % level
-		"thunder_cloud_ball":
-			return "雷云攻击有 %d%% 概率在目标处生成雷球。" % chance
-		"thunder_cloud_haste":
-			var intervals := [0.0, 2.0 / 1.5, 1.0, 2.0 / 2.5]
-			return "雷云攻击间隔缩短为 %.2f 秒。" % float(intervals[level])
-		"thunder_ball":
-			return "每 %.2f 秒在玩家位置生成一个雷球。" % (10.0 / float(level))
-		"thunder_ball_laser":
-			return "雷球爆炸有 %d%% 概率发射镭射炮。" % chance
-		"thunder_ball_paralysis":
-			return "雷球爆炸有 %d%% 概率麻痹全部受击敌人 5 秒。" % chance
-	return ""
+func _get_upgrade_card_image_path(option_id: String, level: int) -> String:
+	return "res://assets/upgrades/electric/%s_lv%d.png" % [option_id, level]
 
 
-func _choose_upgrade(option_id: String) -> void:
+func _select_upgrade(option_id: String) -> void:
+	_pending_upgrade_id = option_id
+	if level_up_confirm_button != null:
+		level_up_confirm_button.disabled = false
+	for child in level_up_options_box.get_children():
+		if child is TextureButton:
+			child.modulate = Color.WHITE if child.name == "Upgrade_%s" % option_id else Color(0.42, 0.42, 0.42, 0.72)
+
+
+func _confirm_upgrade() -> void:
+	if _pending_upgrade_id.is_empty():
+		return
+	var option_id := _pending_upgrade_id
+	_pending_upgrade_id = ""
+	if level_up_confirm_button != null:
+		level_up_confirm_button.disabled = true
+	_apply_confirmed_upgrade(option_id)
+
+
+func _apply_confirmed_upgrade(option_id: String) -> void:
 	var next_upgrade_level: int = int(_upgrade_levels.get(option_id, 0)) + 1
 	_upgrade_levels[option_id] = mini(next_upgrade_level, MAX_UPGRADE_LEVEL)
 	if electric_skills != null:
@@ -839,6 +833,7 @@ func _choose_upgrade(option_id: String) -> void:
 func _on_player_died() -> void:
 	is_game_over = true
 	is_level_up_open = false
+	_pending_upgrade_id = ""
 	# 清理进行中的 boss 过场
 	if _boss_intro != null:
 		_boss_intro.queue_free()
