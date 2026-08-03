@@ -3,11 +3,8 @@ extends Node2D
 const PlayerScene := preload("res://scripts/player.gd")
 const EnemyScene := preload("res://scripts/enemy.gd")
 const ProjectileScene := preload("res://scripts/projectile.gd")
-const CombatEffectsScene := preload("res://scripts/combat_effects.gd")
-const StatMath := preload("res://scripts/stat_math.gd")
-const AutoShooterScene := preload("res://scripts/weapons/auto_shooter.gd")
-const OrbitSwordScene := preload("res://scripts/weapons/orbit_sword.gd")
-const DroneMinionScene := preload("res://scripts/weapons/drone_minion.gd")
+const BasicAttackScene := preload("res://scripts/basic_attack.gd")
+
 const BossScene := preload("res://scripts/boss.gd")
 const BossShooterScene := preload("res://scripts/boss_shooter.gd")
 const BossIntroScene := preload("res://scripts/boss_intro.gd")
@@ -21,10 +18,13 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 # TODO(临时调试): 第3级 100->40, 第4级 200->60;新增 Level 5-12(80/100/120/200/220/240/260)便于测试后期等级。
 #                    调试完成后需确认正式积分曲线。
 const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 80, 100, 120, 200, 220, 240, 260, 280, 290, 300, 320, 400]
+# Upgrade trigger stays disabled while the skill system is being rebuilt.
+const UPGRADES_ENABLED := false
+# Upgrade option configuration is intentionally empty; BasicAttack is not an option.
+const UPGRADE_OPTIONS := []
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.1.24"
-const UPGRADE_IMAGE_SIZE := Vector2(100.0, 200.0)
+const GAME_VERSION := "v1.2.0"
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
 const ENEMY_CONFIGS := {
@@ -128,79 +128,6 @@ const BOSS_SPAWN_POOL := ["big_brother", "big_brother_shooter"]
 const BOSS_FIRST_SPAWN_DELAY := 60.0
 const BOSS_NEXT_SPAWN_DELAY := 180.0
 const BOSS_SPAWN_DISTANCE := 360.0  # 生成在玩家可见区外此距离处
-const UPGRADE_OPTIONS := {
-	"auto_shooter": {
-		"id": "auto_shooter",
-		"title": "Bullet",
-		"description": "Auto-targets nearest enemy",
-		"image_path": "res://assets/upgrades/bullet.svg",
-		"weapon_type": "auto_shooter",
-	},
-	"orbit_sword": {
-		"id": "orbit_sword",
-		"title": "Orbit Sword",
-		"description": "Orbits player, damages enemies",
-		"image_path": "res://assets/upgrades/orbit_sword.svg",
-		"weapon_type": "orbit_sword",
-	},
-	"drone_minion": {
-		"id": "drone_minion",
-		"title": "Drone Minion",
-		"description": "Spawns minion that tracks and explodes on enemies",
-		"image_path": "res://assets/upgrades/drone_minion.svg",
-		"weapon_type": "drone_minion",
-	},
-}
-# 通用 stat 升级定义。weight 控制加权随机投放(详见 docs/skill-system-framework.md §8)。
-# desc 仅作为无武器解锁时的兜底;有武器时改用 _build_stat_description 按已解锁武器动态拼接。
-var stat_upgrade_defs := [
-	{"id": "stat_frequency", "stat": StatMath.Stat.FREQUENCY, "title": "Frequency", "desc": "Lower bullet cooldown / faster sword spin", "weight": 100},
-	{"id": "stat_damage", "stat": StatMath.Stat.DAMAGE, "title": "Damage", "desc": "Increase damage per hit", "weight": 100},
-	{"id": "stat_area", "stat": StatMath.Stat.AREA, "title": "Area", "desc": "Increase bullet/sword size", "weight": 60},
-	{"id": "stat_duration", "stat": StatMath.Stat.DURATION, "title": "Duration", "desc": "Longer bullet life / longer sword", "weight": 60},
-	{"id": "stat_speed", "stat": StatMath.Stat.SPEED, "title": "Speed", "desc": "Faster bullets / faster sword spin", "weight": 60},
-	{"id": "stat_count", "stat": StatMath.Stat.COUNT, "title": "Count", "desc": "+1 bullet (multi-target) / +1 sword", "weight": 35},
-	{"id": "stat_pierce", "stat": StatMath.Stat.PIERCE, "title": "Pierce", "desc": "Bullets pierce more / sword cooldown down", "weight": 35},
-]
-# stat × weapon_type → 该 stat 对该武器的具体效果文案。
-# 用 var 而非 const:避免 release 编译器对嵌套 Dictionary 的 enum key 类型推断失败。
-# DURATION 对 drone_minion 无意义(不入池),故此处不列 drone_minion 的 DURATION 条目。
-var STAT_DESC_PER_WEAPON := {
-	StatMath.Stat.FREQUENCY: {
-		"auto_shooter": "Bullet cooldown down",
-		"orbit_sword": "Faster sword spin",
-		"drone_minion": "Faster minion spawn",
-	},
-	StatMath.Stat.DAMAGE: {
-		"auto_shooter": "+bullet damage",
-		"orbit_sword": "+sword damage",
-		"drone_minion": "+explosion damage",
-	},
-	StatMath.Stat.AREA: {
-		"auto_shooter": "Bigger bullet",
-		"orbit_sword": "Bigger sword + orbit radius",
-		"drone_minion": "Larger detection + explosion radius",
-	},
-	StatMath.Stat.DURATION: {
-		"auto_shooter": "Longer bullet life",
-		"orbit_sword": "Longer sword",
-	},
-	StatMath.Stat.SPEED: {
-		"auto_shooter": "Faster bullets",
-		"orbit_sword": "Faster sword spin",
-		"drone_minion": "Faster minion tracking",
-	},
-	StatMath.Stat.COUNT: {
-		"auto_shooter": "+1 bullet (multi-target)",
-		"orbit_sword": "+1 sword",
-		"drone_minion": "+1 minion slot",
-	},
-	StatMath.Stat.PIERCE: {
-		"auto_shooter": "Bullets pierce more",
-		"orbit_sword": "Sword hit cooldown down",
-		"drone_minion": "Minion survives +1 explosion",
-	},
-}
 const ENEMY_SPAWN_MARGIN := 140.0
 const MAX_ENEMIES := 120
 # 固定炮塔同时存活上限:独立于 MAX_ENEMIES,避免炮塔挤占普通敌人配额。
@@ -210,30 +137,14 @@ const MAX_TURRETS := 3
 # MIN > FIRE_RANGE(1280) 让玩家有反应时间,不会一出生就被开火打到。
 const TURRET_SPAWN_DIST_MIN := 1500.0
 const TURRET_SPAWN_DIST_MAX := 3000.0
-var element_upgrade_defs := [
-	{"id": "element_fire", "element": "fire", "title": "Fire", "desc": "On hit: explode for 50 damage in 100px radius. 5s cooldown.", "weight": 45},
-	{"id": "element_poison", "element": "poison", "title": "Poison", "desc": "On hit: poison for 10 damage/sec over 5s. Reapply resets duration.", "weight": 45},
-	{"id": "element_frost", "element": "frost", "title": "Frost", "desc": "On hit: frostbite for 2 damage/sec and 50% slow over 5s. Reapply resets duration.", "weight": 45},
-	{"id": "element_electric", "element": "electric", "title": "Electric", "desc": "On hit: 50% chance to chain lightning to 4 enemies within 100px, 100 damage each.", "weight": 45},
-]
-# 元素进阶升级:仅当对应基础元素已解锁后才会进入升级池;一次性,选中后不再出现。
-# advanced: true 让 _create_upgrade_card 走 _choose_advanced_upgrade 分支而非 _choose_element。
-# 权重规则:进阶元素升级的 weight 必须高于 stat_upgrade_defs 的单项权重(stat 最高 100),
-# 确保未解锁时比任何普通 stat 升级更容易出现;选中后从池中移除,自然回归 stat 为主。
-var element_advanced_upgrade_defs := [
-	{"id": "poison_pool", "element": "poison", "advanced": true, "title": "Poison Pool", "desc": "On poison hit: 50% chance to spawn a poison pool (radius 100, 5s). Enemies in pool refresh poison and are slowed by 30%.", "weight": 200},
-	{"id": "electric_paralysis", "element": "electric", "advanced": true, "title": "Electric Paralysis", "desc": "On electric chain hit: 40% chance to paralyze for 5s. Paralyzed enemies take 20 damage/sec and cannot move.", "weight": 200},
-	{"id": "electric_thunderstorm", "element": "electric", "advanced": true, "title": "Thunder Storm", "desc": "On electric chain hit: 40% chance to spawn a thunder cloud (10s). Cloud auto-strikes the nearest enemy within bullet range every 1s for 100 damage.", "weight": 200},
-]
-
 var player
 var camera: Camera2D
 var world_layer: Node2D
 var enemies_layer: Node2D
 var projectiles_layer: Node2D
-var weapons_layer: Node2D
+var player_attacks_layer: Node2D
+var basic_attack
 var ui_layer: CanvasLayer
-var combat_effects
 var score_label: Label
 var level_label: Label
 var version_label: Label
@@ -249,9 +160,6 @@ var is_game_over := false
 var is_level_up_open := false
 var elapsed_seconds := 0.0
 var _spawn_budgets := {}
-var _acquired_upgrades := {}
-var _stat_stacks := {}
-var _unlocked_weapons := []
 var _boss_intro
 var _boss_name_label: Label
 # 当前存活 boss 引用;为空表示当前没有 boss。
@@ -269,8 +177,8 @@ func _ready() -> void:
 	get_tree().paused = false
 	_init_spawn_budgets()
 	_build_world()
-	_build_combat_effects()
 	_spawn_player()
+	_create_basic_attack()
 	_build_ui()
 	_update_score_label()
 	_update_level_label()
@@ -313,9 +221,9 @@ func _build_world() -> void:
 	projectiles_layer.name = "Projectiles"
 	add_child(projectiles_layer)
 
-	weapons_layer = Node2D.new()
-	weapons_layer.name = "Weapons"
-	add_child(weapons_layer)
+	player_attacks_layer = Node2D.new()
+	player_attacks_layer.name = "PlayerAttacks"
+	add_child(player_attacks_layer)
 
 	camera = Camera2D.new()
 	camera.name = "Camera2D"
@@ -352,13 +260,6 @@ func _create_map_border() -> Node2D:
 	return border
 
 
-func _build_combat_effects() -> void:
-	combat_effects = CombatEffectsScene.new()
-	combat_effects.name = "CombatEffects"
-	combat_effects.setup(enemies_layer)
-	add_child(combat_effects)
-
-
 func _spawn_player() -> void:
 	player = PlayerScene.new()
 	player.name = "Player"
@@ -367,6 +268,14 @@ func _spawn_player() -> void:
 	player.died.connect(_on_player_died)
 	add_child(player)
 	camera.global_position = player.global_position
+
+
+# BasicAttack is permanent and independent from the skill system.
+func _create_basic_attack() -> void:
+	basic_attack = BasicAttackScene.new()
+	basic_attack.name = "BasicAttack"
+	basic_attack.setup(player, enemies_layer, projectiles_layer, ProjectileScene)
+	player_attacks_layer.add_child(basic_attack)
 
 
 func _build_ui() -> void:
@@ -788,312 +697,31 @@ func _update_level_label() -> void:
 
 
 func _check_level_up() -> void:
+	if not UPGRADES_ENABLED:
+		return
 	if is_game_over or is_level_up_open or _boss_intro != null:
 		return
 	var next_level := current_level + 1
 	if next_level > LEVEL_REQUIRED_SCORES.size():
-		return  # 超出已配置的等级数,不再触发升级
+		return
 	var required_score: int = int(LEVEL_REQUIRED_SCORES[next_level - 1])
 	if score >= required_score:
 		_show_level_up_options(next_level)
 
 
+# Upgrade popup shell remains; option generation and selection are intentionally disabled.
 func _show_level_up_options(level: int) -> void:
-	is_level_up_open = true
+	if not UPGRADES_ENABLED or UPGRADE_OPTIONS.is_empty():
+		return
 	level_up_title.text = "Level %d - Choose an Upgrade" % level
 	for child in level_up_options_box.get_children():
 		child.queue_free()
-	if level == 1:
-		# Level 1: choose the initial weapon only.
-		for option_id in ["auto_shooter", "orbit_sword", "drone_minion"]:
-			level_up_options_box.add_child(_create_weapon_card(option_id))
-	elif level == 2:
-		# Level 2: choose an element (one-shot). If all elements exhausted, fall back to stat upgrades.
-		var pool := _build_normal_upgrade_pool()
-		if pool.is_empty():
-			pool = _build_stat_pool()
-		for def in _pick_weighted(pool, 3):
-			level_up_options_box.add_child(_create_upgrade_card(def))
-	else:
-		# Level 3+: stat 升级(可重复) + 进阶元素升级(一次性,基础元素已解锁才出现)。
-		var pool := _build_stat_pool() + _build_advanced_upgrade_pool()
-		for def in _pick_weighted(pool, 3):
-			level_up_options_box.add_child(_create_upgrade_card(def))
+	# TODO: Build new upgrade cards here after the redesigned data model is ready.
+	if level_up_options_box.get_child_count() == 0:
+		return
+	is_level_up_open = true
 	level_up_overlay.visible = true
 	get_tree().paused = true
-
-# Stat pool: excludes stats already capped at MAX_STACKS。
-# DURATION 对 drone_minion 无效:若已解锁武器里只有 drone_minion(没有 auto_shooter / orbit_sword),
-# 则 DURATION 不入池(framework §7 禁用选项,避免选了无效果的升级)。
-func _build_stat_pool() -> Array:
-	var pool := []
-	var types := _get_unlocked_weapon_types()
-	var duration_disabled := not types.is_empty() and not types.has("auto_shooter") and not types.has("orbit_sword")
-	for def in stat_upgrade_defs:
-		var stat: int = int(def["stat"])
-		if stat == StatMath.Stat.DURATION and duration_disabled:
-			continue
-		if int(_stat_stacks.get(stat, 0)) < StatMath.MAX_STACKS:
-			pool.append(def)
-	return pool
-
-
-# 当前已解锁的 weapon_type 列表(去重,顺序与 UPGRADE_OPTIONS 一致)。
-func _get_unlocked_weapon_types() -> Array:
-	var types := []
-	for option_id in _acquired_upgrades.keys():
-		var option: Dictionary = UPGRADE_OPTIONS.get(str(option_id), {})
-		var wtype := str(option.get("weapon_type", ""))
-		if not wtype.is_empty() and not types.has(wtype):
-			types.append(wtype)
-	return types
-
-
-# 按已解锁武器动态拼接 stat 描述;无武器时回退到 stat_upgrade_defs 的兜底 desc。
-func _build_stat_description(stat: int) -> String:
-	var types := _get_unlocked_weapon_types()
-	if types.is_empty():
-		for def in stat_upgrade_defs:
-			if int(def["stat"]) == stat:
-				return str(def["desc"])
-		return ""
-	var parts := []
-	for wtype in types:
-		var per: Dictionary = STAT_DESC_PER_WEAPON.get(stat, {})
-		var d := str(per.get(wtype, ""))
-		if not d.is_empty():
-			parts.append(d)
-	if parts.is_empty():
-		return ""
-	return " / ".join(parts)
-
-
-# Normal upgrade pool: excludes one-shot upgrades already unlocked.
-func _build_normal_upgrade_pool() -> Array:
-	var pool := []
-	for def in element_upgrade_defs:
-		var element_id := str(def["element"])
-		if combat_effects == null or not combat_effects.is_element_unlocked(element_id):
-			pool.append(def)
-	return pool
-
-
-# 进阶升级池:仅包含「基础元素已解锁 + 进阶升级未解锁」的项;一次性,选中后不再出现。
-# 电属性的两个进阶升级(paralysis / thunderstorm)互斥:已解锁任一,另一个不再进入池子。
-func _build_advanced_upgrade_pool() -> Array:
-	var pool := []
-	var electric_advanced_acquired := _acquired_upgrades.has("electric_paralysis") or _acquired_upgrades.has("electric_thunderstorm")
-	for def in element_advanced_upgrade_defs:
-		var element_id := str(def["element"])
-		if combat_effects == null or not combat_effects.is_element_unlocked(element_id):
-			continue
-		var upgrade_id := str(def["id"])
-		if _acquired_upgrades.has(upgrade_id):
-			continue
-		if element_id == "electric" and electric_advanced_acquired:
-			continue
-		pool.append(def)
-	return pool
-
-
-func _pick_weighted(pool: Array, n: int) -> Array:
-	var result := []
-	var working := pool.duplicate()
-	while result.size() < n and not working.is_empty():
-		var total_weight := 0.0
-		for def in working:
-			total_weight += float(def["weight"])
-		var roll := randf() * total_weight
-		var acc := 0.0
-		var chosen := 0
-		for i in working.size():
-			acc += float(working[i]["weight"])
-			if roll <= acc:
-				chosen = i
-				break
-		result.append(working[chosen])
-		working.remove_at(chosen)
-	return result
-
-
-func _create_weapon_card(option_id: String) -> Control:
-	var option: Dictionary = UPGRADE_OPTIONS[option_id]
-	var card := VBoxContainer.new()
-	card.name = "Upgrade_%s" % str(option.get("id", option_id))
-	card.custom_minimum_size = Vector2(180, 300)
-	card.alignment = BoxContainer.ALIGNMENT_CENTER
-	card.add_theme_constant_override("separation", 8)
-	card.process_mode = Node.PROCESS_MODE_ALWAYS
-
-	var title := Label.new()
-	title.text = str(option["title"])
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.add_theme_font_size_override("font_size", 24)
-	card.add_child(title)
-
-	var image_button := TextureButton.new()
-	image_button.name = "ImageButton"
-	image_button.custom_minimum_size = UPGRADE_IMAGE_SIZE
-	image_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-	image_button.ignore_texture_size = true
-	image_button.texture_normal = load(str(option["image_path"]))
-	image_button.process_mode = Node.PROCESS_MODE_ALWAYS
-	image_button.pressed.connect(_choose_upgrade.bind(option_id))
-	card.add_child(image_button)
-
-	var description := Label.new()
-	description.text = str(option["description"])
-	description.custom_minimum_size = Vector2(170, 0)
-	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	description.add_theme_font_size_override("font_size", 16)
-	card.add_child(description)
-
-	return card
-
-
-func _create_upgrade_card(def: Dictionary) -> Control:
-	var is_advanced := bool(def.get("advanced", false))
-	var is_element := def.has("element") and not is_advanced
-	var stat := int(def.get("stat", -1))
-	var current_stacks: int = int(_stat_stacks.get(stat, 0))
-	var card := VBoxContainer.new()
-	card.name = "Upgrade_%s" % str(def["id"])
-	card.custom_minimum_size = Vector2(180, 300)
-	card.alignment = BoxContainer.ALIGNMENT_CENTER
-	card.add_theme_constant_override("separation", 8)
-	card.process_mode = Node.PROCESS_MODE_ALWAYS
-
-	# element / advanced 升级只显示标题;stat 升级显示 Lv.X -> Lv.Y 堆叠进度。
-	var show_title_only := is_element or is_advanced
-	var title := Label.new()
-	title.text = str(def["title"]) if show_title_only else "%s  Lv.%d -> Lv.%d" % [str(def["title"]), current_stacks, current_stacks + 1]
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.add_theme_font_size_override("font_size", 22)
-	card.add_child(title)
-
-	var button := Button.new()
-	button.name = "SelectButton"
-	button.custom_minimum_size = Vector2(120, 120)
-	button.text = str(def["title"])
-	button.add_theme_font_size_override("font_size", 34)
-	button.process_mode = Node.PROCESS_MODE_ALWAYS
-	if is_advanced:
-		button.pressed.connect(_choose_advanced_upgrade.bind(str(def["id"])))
-	elif is_element:
-		button.pressed.connect(_choose_element.bind(str(def["element"])))
-	else:
-		button.pressed.connect(_choose_stat.bind(stat))
-	card.add_child(button)
-
-	var description := Label.new()
-	# stat 升级描述按已解锁武器动态拼接;element / advanced 升级沿用 def["desc"]。
-	description.text = str(def["desc"]) if show_title_only else _build_stat_description(stat)
-	description.custom_minimum_size = Vector2(170, 0)
-	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	description.add_theme_font_size_override("font_size", 16)
-	card.add_child(description)
-
-	return card
-
-func _choose_upgrade(option_id: String) -> void:
-	_apply_upgrade(option_id)
-	_finish_level_up()
-
-
-func _choose_stat(stat: int) -> void:
-	_apply_stat_upgrade(stat)
-	_finish_level_up()
-
-
-func _choose_element(element_id: String) -> void:
-	if combat_effects != null:
-		combat_effects.unlock_element(element_id)
-	_finish_level_up()
-
-
-# 进阶元素升级:一次性,选中后记入 _acquired_upgrades,升级池过滤会避免再次出现。
-func _choose_advanced_upgrade(upgrade_id: String) -> void:
-	if _acquired_upgrades.has(upgrade_id):
-		return
-	_acquired_upgrades[upgrade_id] = true
-	if combat_effects != null:
-		match upgrade_id:
-			"poison_pool":
-				combat_effects.unlock_poison_pool()
-			"electric_paralysis":
-				combat_effects.unlock_electric_paralysis()
-			"electric_thunderstorm":
-				combat_effects.unlock_electric_thunderstorm()
-	_finish_level_up()
-
-
-func _finish_level_up() -> void:
-	current_level += 1
-	_update_level_label()
-	level_up_overlay.visible = false
-	is_level_up_open = false
-	get_tree().paused = false
-	_check_level_up()
-
-
-func _apply_upgrade(option_id: String) -> void:
-	if _acquired_upgrades.has(option_id):
-		return
-	_acquired_upgrades[option_id] = true
-	var option: Dictionary = UPGRADE_OPTIONS.get(option_id, {})
-	match str(option.get("weapon_type", "")):
-		"auto_shooter":
-			_create_auto_shooter()
-		"orbit_sword":
-			_create_orbit_sword()
-		"drone_minion":
-			_create_drone_minion()
-
-
-# 通用 stat 升级:堆叠数 +1,并同步给所有已解锁武器。
-func _apply_stat_upgrade(stat: int) -> void:
-	_stat_stacks[stat] = int(_stat_stacks.get(stat, 0)) + 1
-	var stacks: int = int(_stat_stacks[stat])
-	for weapon in _unlocked_weapons:
-		if is_instance_valid(weapon):
-			weapon.apply_stat(stat, stacks)
-
-
-func _create_auto_shooter() -> void:
-	var auto_shooter := AutoShooterScene.new()
-	auto_shooter.name = "AutoShooter"
-	auto_shooter.setup(player, enemies_layer, projectiles_layer, ProjectileScene, combat_effects)
-	weapons_layer.add_child(auto_shooter)
-	_unlocked_weapons.append(auto_shooter)
-	_sync_weapon_stats(auto_shooter)
-
-
-func _create_orbit_sword() -> void:
-	var orbit_sword := OrbitSwordScene.new()
-	orbit_sword.name = "OrbitSword"
-	orbit_sword.setup(player, combat_effects)
-	weapons_layer.add_child(orbit_sword)
-	_unlocked_weapons.append(orbit_sword)
-	_sync_weapon_stats(orbit_sword)
-
-
-func _create_drone_minion() -> void:
-	var drone_minion := DroneMinionScene.new()
-	drone_minion.name = "DroneMinion"
-	drone_minion.setup(player, enemies_layer, combat_effects)
-	weapons_layer.add_child(drone_minion)
-	_unlocked_weapons.append(drone_minion)
-	_sync_weapon_stats(drone_minion)
-
-
-# 新武器解锁时,把当前已累积的 stat 堆叠同步过去(支持后续多武器共存)。
-func _sync_weapon_stats(weapon: Node) -> void:
-	for stat in _stat_stacks.keys():
-		weapon.apply_stat(int(stat), int(_stat_stacks[stat]))
 
 
 func _on_player_died() -> void:
@@ -1115,7 +743,7 @@ func _on_player_died() -> void:
 	get_tree().call_group("enemy", "set_process", false)
 	get_tree().call_group("projectile", "queue_free")
 	get_tree().call_group("enemy_projectile", "queue_free")
-	get_tree().call_group("weapon", "set_process", false)
+	get_tree().call_group("player_attack", "set_process", false)
 
 
 # 点击重新开始按钮:重载当前场景,回到初始状态。
