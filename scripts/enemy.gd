@@ -2,6 +2,7 @@ class_name Enemy
 extends Area2D
 
 signal died(enemy: Enemy)
+
 var enemy_name := "Basic"
 var radius := 18.0
 var max_hp := 100.0
@@ -12,10 +13,13 @@ var score_value := 1
 var body_color := Color(0.92, 0.20, 0.20, 1.0)
 var outline_color := Color(1.0, 0.68, 0.68, 1.0)
 var target: Node2D
+var _paralysis_timer: Timer
+var _paralysis_visual: Node2D
 
 func _ready() -> void:
 	add_to_group("enemy")
 	_create_collision()
+	_create_paralysis_status()
 	queue_redraw()
 
 func apply_config(config: Dictionary) -> void:
@@ -32,6 +36,8 @@ func apply_config(config: Dictionary) -> void:
 func _process(delta: float) -> void:
 	if target == null or not is_instance_valid(target):
 		return
+	if is_paralyzed():
+		return
 	var offset := target.global_position - global_position
 	if offset.length() > 1.0:
 		global_position += offset.normalized() * speed * delta
@@ -44,6 +50,34 @@ func take_damage(amount: float) -> void:
 		died.emit(self)
 		queue_free()
 
+func apply_paralysis(duration: float) -> void:
+	if duration <= 0.0 or hp <= 0.0 or _paralysis_timer == null:
+		return
+	_paralysis_timer.start(duration)
+	if _paralysis_visual != null:
+		_paralysis_visual.visible = true
+
+func is_paralyzed() -> bool:
+	return _paralysis_timer != null and not _paralysis_timer.is_stopped()
+
+func _create_paralysis_status() -> void:
+	_paralysis_timer = Timer.new()
+	_paralysis_timer.name = "ParalysisTimer"
+	_paralysis_timer.one_shot = true
+	_paralysis_timer.timeout.connect(_on_paralysis_ended)
+	add_child(_paralysis_timer)
+	var visual := ParalysisVisual.new()
+	visual.name = "ParalysisVisual"
+	visual.radius = radius
+	visual.visible = false
+	visual.z_index = 5
+	add_child(visual)
+	_paralysis_visual = visual
+
+func _on_paralysis_ended() -> void:
+	if _paralysis_visual != null:
+		_paralysis_visual.visible = false
+
 func _create_collision() -> void:
 	var shape := CircleShape2D.new()
 	shape.radius = radius
@@ -55,3 +89,14 @@ func _create_collision() -> void:
 func _draw() -> void:
 	draw_circle(Vector2.ZERO, radius, body_color)
 	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 32, outline_color, 2.0)
+
+class ParalysisVisual:
+	extends Node2D
+
+	var radius := 18.0
+
+	func _draw() -> void:
+		draw_circle(Vector2.ZERO, radius, Color(1.0, 0.90, 0.20, 0.20))
+		draw_arc(Vector2.ZERO, radius + 4.0, 0.0, TAU, 24, Color(1.0, 0.92, 0.25, 0.95), 3.0)
+		draw_line(Vector2(-radius, -radius * 0.5), Vector2(radius * 0.2, 0.0), Color.YELLOW, 2.0)
+		draw_line(Vector2(radius * 0.2, 0.0), Vector2(-radius * 0.1, radius), Color.YELLOW, 2.0)

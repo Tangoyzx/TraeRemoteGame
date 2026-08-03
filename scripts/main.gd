@@ -4,6 +4,7 @@ const PlayerScene := preload("res://scripts/player.gd")
 const EnemyScene := preload("res://scripts/enemy.gd")
 const ProjectileScene := preload("res://scripts/projectile.gd")
 const BasicAttackScene := preload("res://scripts/basic_attack.gd")
+const ElectricSkillControllerScene := preload("res://scripts/electric_skill_controller.gd")
 
 const BossScene := preload("res://scripts/boss.gd")
 const BossShooterScene := preload("res://scripts/boss_shooter.gd")
@@ -18,13 +19,22 @@ const MAP_RECT := Rect2(Vector2.ZERO, MAP_SIZE)
 # TODO(临时调试): 第3级 100->40, 第4级 200->60;新增 Level 5-12(80/100/120/200/220/240/260)便于测试后期等级。
 #                    调试完成后需确认正式积分曲线。
 const LEVEL_REQUIRED_SCORES := [0, 20, 40, 60, 80, 100, 120, 200, 220, 240, 260, 280, 290, 300, 320, 400]
-# Upgrade trigger stays disabled while the skill system is being rebuilt.
-const UPGRADES_ENABLED := false
-# Upgrade option configuration is intentionally empty; BasicAttack is not an option.
-const UPGRADE_OPTIONS := []
+const UPGRADES_ENABLED := true
+const MAX_UPGRADE_LEVEL := 3
+const UPGRADE_OPTIONS := {
+	"laser": {"title": "镭射炮", "prerequisite": ""},
+	"laser_width": {"title": "镭射炮·宽", "prerequisite": "laser"},
+	"laser_chain": {"title": "镭射炮·连", "prerequisite": "laser"},
+	"thunder_cloud": {"title": "雷云", "prerequisite": ""},
+	"thunder_cloud_ball": {"title": "雷云·球", "prerequisite": "thunder_cloud"},
+	"thunder_cloud_haste": {"title": "雷云·疾", "prerequisite": "thunder_cloud"},
+	"thunder_ball": {"title": "雷球", "prerequisite": ""},
+	"thunder_ball_laser": {"title": "雷球·炮", "prerequisite": "thunder_ball"},
+	"thunder_ball_paralysis": {"title": "雷球·麻", "prerequisite": "thunder_ball"},
+}
 # 游戏版本号,显示在屏幕顶部居中。
 # 规则:合并到远端 main 前,若无特殊说明则末位自动 +1(如 1.0.0 → 1.0.1)。
-const GAME_VERSION := "v1.2.0"
+const GAME_VERSION := "v1.2.1"
 const BASIC_ENEMY_RADIUS := 18.0
 const BASIC_ENEMY_SPEED := 115.0
 const ENEMY_CONFIGS := {
@@ -144,6 +154,7 @@ var enemies_layer: Node2D
 var projectiles_layer: Node2D
 var player_attacks_layer: Node2D
 var basic_attack
+var electric_skills
 var ui_layer: CanvasLayer
 var score_label: Label
 var level_label: Label
@@ -170,6 +181,7 @@ var _next_boss_spawn_time := BOSS_FIRST_SPAWN_DELAY
 var _boss_health_container: CenterContainer
 var _boss_health_name_label: Label
 var _boss_health_bar: ProgressBar
+var _upgrade_levels := {}
 
 
 func _ready() -> void:
@@ -179,6 +191,7 @@ func _ready() -> void:
 	_build_world()
 	_spawn_player()
 	_create_basic_attack()
+	_create_electric_skills()
 	_build_ui()
 	_update_score_label()
 	_update_level_label()
@@ -276,6 +289,13 @@ func _create_basic_attack() -> void:
 	basic_attack.name = "BasicAttack"
 	basic_attack.setup(player, enemies_layer, projectiles_layer, ProjectileScene)
 	player_attacks_layer.add_child(basic_attack)
+
+
+func _create_electric_skills() -> void:
+	electric_skills = ElectricSkillControllerScene.new()
+	electric_skills.name = "ElectricSkills"
+	player_attacks_layer.add_child(electric_skills)
+	electric_skills.setup(player, enemies_layer, player_attacks_layer, basic_attack)
 
 
 func _build_ui() -> void:
@@ -709,19 +729,111 @@ func _check_level_up() -> void:
 		_show_level_up_options(next_level)
 
 
-# Upgrade popup shell remains; option generation and selection are intentionally disabled.
 func _show_level_up_options(level: int) -> void:
 	if not UPGRADES_ENABLED or UPGRADE_OPTIONS.is_empty():
 		return
 	level_up_title.text = "Level %d - Choose an Upgrade" % level
 	for child in level_up_options_box.get_children():
 		child.queue_free()
-	# TODO: Build new upgrade cards here after the redesigned data model is ready.
+	var candidates := _build_upgrade_pool()
+	candidates.shuffle()
+	var option_count: int = mini(3, candidates.size())
+	for index in range(option_count):
+		level_up_options_box.add_child(_create_upgrade_card(str(candidates[index])))
 	if level_up_options_box.get_child_count() == 0:
 		return
 	is_level_up_open = true
 	level_up_overlay.visible = true
 	get_tree().paused = true
+
+
+func _build_upgrade_pool() -> Array:
+	var pool := []
+	for option_id in UPGRADE_OPTIONS.keys():
+		var current_upgrade_level: int = int(_upgrade_levels.get(option_id, 0))
+		if current_upgrade_level >= MAX_UPGRADE_LEVEL:
+			continue
+		var option: Dictionary = UPGRADE_OPTIONS[option_id]
+		var prerequisite := str(option.get("prerequisite", ""))
+		if not prerequisite.is_empty() and int(_upgrade_levels.get(prerequisite, 0)) <= 0:
+			continue
+		pool.append(str(option_id))
+	return pool
+
+
+func _create_upgrade_card(option_id: String) -> Control:
+	var option: Dictionary = UPGRADE_OPTIONS[option_id]
+	var current_upgrade_level: int = int(_upgrade_levels.get(option_id, 0))
+	var next_upgrade_level := current_upgrade_level + 1
+	var card := VBoxContainer.new()
+	card.name = "Upgrade_%s" % option_id
+	card.custom_minimum_size = Vector2(200, 280)
+	card.alignment = BoxContainer.ALIGNMENT_CENTER
+	card.add_theme_constant_override("separation", 12)
+	card.process_mode = Node.PROCESS_MODE_ALWAYS
+
+	var title := Label.new()
+	title.text = "%s  Lv.%d -> Lv.%d" % [str(option["title"]), current_upgrade_level, next_upgrade_level]
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.add_theme_font_size_override("font_size", 22)
+	card.add_child(title)
+
+	var button := Button.new()
+	button.name = "SelectButton"
+	button.custom_minimum_size = Vector2(160, 110)
+	button.text = str(option["title"])
+	button.add_theme_font_size_override("font_size", 26)
+	button.process_mode = Node.PROCESS_MODE_ALWAYS
+	button.pressed.connect(_choose_upgrade.bind(option_id))
+	card.add_child(button)
+
+	var description := Label.new()
+	description.text = _get_upgrade_description(option_id, next_upgrade_level)
+	description.custom_minimum_size = Vector2(190, 0)
+	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.add_theme_font_size_override("font_size", 16)
+	card.add_child(description)
+	return card
+
+
+func _get_upgrade_description(option_id: String, level: int) -> String:
+	var chance := level * 20
+	match option_id:
+		"laser":
+			return "基础射击后有 %d%% 概率发射贯穿镭射炮。" % chance
+		"laser_width":
+			return "镭射炮宽度增加 10px，总宽度达到 %dpx。" % (10 + level * 10)
+		"laser_chain":
+			return "镭射炮有 %d%% 概率在 0.5 秒后继续连射。" % chance
+		"thunder_cloud":
+			return "永久雷云数量增加到 %d 个。" % level
+		"thunder_cloud_ball":
+			return "雷云攻击有 %d%% 概率在目标处生成雷球。" % chance
+		"thunder_cloud_haste":
+			var intervals := [0.0, 2.0 / 1.5, 1.0, 2.0 / 2.5]
+			return "雷云攻击间隔缩短为 %.2f 秒。" % float(intervals[level])
+		"thunder_ball":
+			return "每 %.2f 秒在玩家位置生成一个雷球。" % (10.0 / float(level))
+		"thunder_ball_laser":
+			return "雷球爆炸有 %d%% 概率发射镭射炮。" % chance
+		"thunder_ball_paralysis":
+			return "雷球爆炸有 %d%% 概率麻痹全部受击敌人 5 秒。" % chance
+	return ""
+
+
+func _choose_upgrade(option_id: String) -> void:
+	var next_upgrade_level: int = int(_upgrade_levels.get(option_id, 0)) + 1
+	_upgrade_levels[option_id] = mini(next_upgrade_level, MAX_UPGRADE_LEVEL)
+	if electric_skills != null:
+		electric_skills.set_upgrade_level(option_id, int(_upgrade_levels[option_id]))
+	current_level += 1
+	_update_level_label()
+	level_up_overlay.visible = false
+	is_level_up_open = false
+	get_tree().paused = false
+	_check_level_up()
 
 
 func _on_player_died() -> void:
@@ -744,6 +856,8 @@ func _on_player_died() -> void:
 	get_tree().call_group("projectile", "queue_free")
 	get_tree().call_group("enemy_projectile", "queue_free")
 	get_tree().call_group("player_attack", "set_process", false)
+	if electric_skills != null:
+		electric_skills.stop()
 
 
 # 点击重新开始按钮:重载当前场景,回到初始状态。
