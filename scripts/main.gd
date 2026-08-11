@@ -34,7 +34,7 @@ const UPGRADE_OPTIONS := {
 	"thunder_ball_laser": {"title": "雷球·炮", "prerequisite": "thunder_ball"},
 	"thunder_ball_paralysis": {"title": "雷球·麻", "prerequisite": "thunder_ball"},
 }
-const GAME_VERSION := "v1.2.6"
+const GAME_VERSION := "v1.2.7"
 const ENEMY_CONFIGS := {
 	"chaser_1": {"name":"Chaser I", "behavior":"chaser", "shape":"square", "tier":1, "radius":18.0, "max_hp":100.0, "damage":100, "speed":190.0, "score_value":2, "body_color":Color(0.76,0.18,0.20,1.0), "outline_color":Color(1.0,0.56,0.58,1.0)},
 	"chaser_2": {"name":"Chaser II", "behavior":"chaser", "shape":"square", "tier":2, "radius":20.0, "max_hp":200.0, "damage":100, "speed":200.0, "score_value":3, "body_color":Color(0.88,0.25,0.18,1.0), "outline_color":Color(1.0,0.72,0.50,1.0)},
@@ -47,12 +47,12 @@ const ENEMY_CONFIGS := {
 	"fast_3": {"name":"Runner III", "behavior":"chaser", "shape":"diamond", "tier":3, "radius":14.0, "max_hp":50.0, "damage":100, "speed":290.0, "score_value":2, "body_color":Color(1.0,0.18,0.54,1.0), "outline_color":Color(1.0,0.72,0.88,1.0)},
 	# 六芒星:近战(白系)对标 chaser_N 的速度/血量/体型;远程(蓝系)对标 ranged_N。
 	# 同一组分裂只首杀给分,故 score_value 高于同档 chaser。
-	"hexagram_melee_1": {"name":"Hexagram I", "behavior":"hexagram", "shape":"hexagram", "form":"melee", "tier":1, "radius":18.0, "max_hp":100.0, "damage":100, "speed":190.0, "score_value":5, "body_color":Color(0.95,0.95,0.95,1.0), "outline_color":Color(1.0,1.0,1.0,1.0)},
-	"hexagram_melee_2": {"name":"Hexagram II", "behavior":"hexagram", "shape":"hexagram", "form":"melee", "tier":2, "radius":20.0, "max_hp":200.0, "damage":100, "speed":200.0, "score_value":8, "body_color":Color(0.78,0.78,0.82,1.0), "outline_color":Color(0.95,0.95,1.0,1.0)},
-	"hexagram_melee_3": {"name":"Hexagram III", "behavior":"hexagram", "shape":"hexagram", "form":"melee", "tier":3, "radius":22.0, "max_hp":350.0, "damage":100, "speed":210.0, "score_value":12, "body_color":Color(0.95,0.78,0.82,1.0), "outline_color":Color(1.0,0.85,0.88,1.0)},
-	"hexagram_ranged_1": {"name":"Hexagram R-I", "behavior":"hexagram", "shape":"hexagram", "form":"ranged", "tier":1, "radius":18.0, "max_hp":100.0, "damage":100, "speed":145.0, "score_value":5, "body_color":Color(0.40,0.78,1.0,1.0), "outline_color":Color(0.80,0.95,1.0,1.0), "preferred_distance_min":420.0, "preferred_distance_max":600.0, "fire_interval":3.5, "fire_range":900.0, "projectile_speed":260.0, "projectile_damage":100.0},
-	"hexagram_ranged_2": {"name":"Hexagram R-II", "behavior":"hexagram", "shape":"hexagram", "form":"ranged", "tier":2, "radius":20.0, "max_hp":175.0, "damage":100, "speed":155.0, "score_value":8, "body_color":Color(0.30,0.55,1.0,1.0), "outline_color":Color(0.75,0.85,1.0,1.0), "preferred_distance_min":420.0, "preferred_distance_max":600.0, "fire_interval":3.0, "fire_range":900.0, "projectile_speed":285.0, "projectile_damage":100.0},
-	"hexagram_ranged_3": {"name":"Hexagram R-III", "behavior":"hexagram", "shape":"hexagram", "form":"ranged", "tier":3, "radius":22.0, "max_hp":300.0, "damage":100, "speed":165.0, "score_value":12, "body_color":Color(0.40,0.30,0.95,1.0), "outline_color":Color(0.80,0.75,1.0,1.0), "preferred_distance_min":420.0, "preferred_distance_max":600.0, "fire_interval":2.5, "fire_range":900.0, "projectile_speed":310.0, "projectile_damage":100.0},
+	"hexagram_melee_1": {"name":"Hexagram I", "behavior":"hexagram", "shape":"hexagram", "form":"melee", "tier":1, "radius":18.0, "max_hp":200.0, "damage":100, "speed":190.0, "score_value":5, "body_color":Color(0.95,0.95,0.95,1.0), "outline_color":Color(1.0,1.0,1.0,1.0)},
+	"hexagram_melee_2": {"name":"Hexagram II", "behavior":"hexagram", "shape":"hexagram", "form":"melee", "tier":2, "radius":20.0, "max_hp":400.0, "damage":100, "speed":200.0, "score_value":8, "body_color":Color(0.78,0.78,0.82,1.0), "outline_color":Color(0.95,0.95,1.0,1.0)},
+	"hexagram_melee_3": {"name":"Hexagram III", "behavior":"hexagram", "shape":"hexagram", "form":"melee", "tier":3, "radius":22.0, "max_hp":700.0, "damage":100, "speed":210.0, "score_value":12, "body_color":Color(0.95,0.78,0.82,1.0), "outline_color":Color(1.0,0.85,0.88,1.0)},
+	"hexagram_ranged_1": {"name":"Hexagram R-I", "behavior":"hexagram", "shape":"hexagram", "form":"ranged", "tier":1, "radius":18.0, "max_hp":200.0, "damage":100, "speed":145.0, "score_value":5, "body_color":Color(0.40,0.78,1.0,1.0), "outline_color":Color(0.80,0.95,1.0,1.0), "preferred_distance_min":420.0, "preferred_distance_max":600.0, "fire_interval":3.5, "fire_range":900.0, "projectile_speed":260.0, "projectile_damage":100.0},
+	"hexagram_ranged_2": {"name":"Hexagram R-II", "behavior":"hexagram", "shape":"hexagram", "form":"ranged", "tier":2, "radius":20.0, "max_hp":350.0, "damage":100, "speed":155.0, "score_value":8, "body_color":Color(0.30,0.55,1.0,1.0), "outline_color":Color(0.75,0.85,1.0,1.0), "preferred_distance_min":420.0, "preferred_distance_max":600.0, "fire_interval":3.0, "fire_range":900.0, "projectile_speed":285.0, "projectile_damage":100.0},
+	"hexagram_ranged_3": {"name":"Hexagram R-III", "behavior":"hexagram", "shape":"hexagram", "form":"ranged", "tier":3, "radius":22.0, "max_hp":600.0, "damage":100, "speed":165.0, "score_value":12, "body_color":Color(0.40,0.30,0.95,1.0), "outline_color":Color(0.80,0.75,1.0,1.0), "preferred_distance_min":420.0, "preferred_distance_max":600.0, "fire_interval":2.5, "fire_range":900.0, "projectile_speed":310.0, "projectile_damage":100.0},
 }
 const SPAWN_STRATEGY := [
 	{"start_time":0.0, "rates":{"chaser_1":14.0}},
