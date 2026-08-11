@@ -3,6 +3,7 @@ extends Node2D
 const PlayerScene := preload("res://scripts/player.gd")
 const EnemyScene := preload("res://scripts/enemy.gd")
 const RangedEnemyScene := preload("res://scripts/ranged_enemy.gd")
+const HexagramEnemyScene := preload("res://scripts/hexagram_enemy.gd")
 const ProjectileScene := preload("res://scripts/projectile.gd")
 const BasicAttackScene := preload("res://scripts/basic_attack.gd")
 const ElectricSkillControllerScene := preload("res://scripts/electric_skill_controller.gd")
@@ -33,7 +34,7 @@ const UPGRADE_OPTIONS := {
 	"thunder_ball_laser": {"title": "雷球·炮", "prerequisite": "thunder_ball"},
 	"thunder_ball_paralysis": {"title": "雷球·麻", "prerequisite": "thunder_ball"},
 }
-const GAME_VERSION := "v1.2.3"
+const GAME_VERSION := "v1.2.4"
 const ENEMY_CONFIGS := {
 	"chaser_1": {"name":"Chaser I", "behavior":"chaser", "shape":"square", "tier":1, "radius":18.0, "max_hp":100.0, "damage":100, "speed":190.0, "score_value":2, "body_color":Color(0.76,0.18,0.20,1.0), "outline_color":Color(1.0,0.56,0.58,1.0)},
 	"chaser_2": {"name":"Chaser II", "behavior":"chaser", "shape":"square", "tier":2, "radius":20.0, "max_hp":200.0, "damage":100, "speed":200.0, "score_value":3, "body_color":Color(0.88,0.25,0.18,1.0), "outline_color":Color(1.0,0.72,0.50,1.0)},
@@ -44,18 +45,26 @@ const ENEMY_CONFIGS := {
 	"fast_1": {"name":"Runner I", "behavior":"chaser", "shape":"diamond", "tier":1, "radius":12.0, "max_hp":50.0, "damage":100, "speed":250.0, "score_value":1, "body_color":Color(0.98,0.78,0.16,1.0), "outline_color":Color(1.0,0.96,0.62,1.0)},
 	"fast_2": {"name":"Runner II", "behavior":"chaser", "shape":"diamond", "tier":2, "radius":13.0, "max_hp":50.0, "damage":100, "speed":270.0, "score_value":2, "body_color":Color(0.98,0.48,0.12,1.0), "outline_color":Color(1.0,0.82,0.48,1.0)},
 	"fast_3": {"name":"Runner III", "behavior":"chaser", "shape":"diamond", "tier":3, "radius":14.0, "max_hp":50.0, "damage":100, "speed":290.0, "score_value":2, "body_color":Color(1.0,0.18,0.54,1.0), "outline_color":Color(1.0,0.72,0.88,1.0)},
+	# 六芒星:近战(白系)对标 chaser_N 的速度/血量/体型;远程(蓝系)对标 ranged_N。
+	# 同一组分裂只首杀给分,故 score_value 高于同档 chaser。
+	"hexagram_melee_1": {"name":"Hexagram I", "behavior":"hexagram", "shape":"hexagram", "form":"melee", "tier":1, "radius":18.0, "max_hp":100.0, "damage":100, "speed":190.0, "score_value":5, "body_color":Color(0.95,0.95,0.95,1.0), "outline_color":Color(1.0,1.0,1.0,1.0)},
+	"hexagram_melee_2": {"name":"Hexagram II", "behavior":"hexagram", "shape":"hexagram", "form":"melee", "tier":2, "radius":20.0, "max_hp":200.0, "damage":100, "speed":200.0, "score_value":8, "body_color":Color(0.78,0.78,0.82,1.0), "outline_color":Color(0.95,0.95,1.0,1.0)},
+	"hexagram_melee_3": {"name":"Hexagram III", "behavior":"hexagram", "shape":"hexagram", "form":"melee", "tier":3, "radius":22.0, "max_hp":350.0, "damage":100, "speed":210.0, "score_value":12, "body_color":Color(0.95,0.78,0.82,1.0), "outline_color":Color(1.0,0.85,0.88,1.0)},
+	"hexagram_ranged_1": {"name":"Hexagram R-I", "behavior":"hexagram", "shape":"hexagram", "form":"ranged", "tier":1, "radius":18.0, "max_hp":100.0, "damage":100, "speed":145.0, "score_value":5, "body_color":Color(0.40,0.78,1.0,1.0), "outline_color":Color(0.80,0.95,1.0,1.0), "preferred_distance_min":420.0, "preferred_distance_max":600.0, "fire_interval":3.5, "fire_range":900.0, "projectile_speed":260.0, "projectile_damage":100.0},
+	"hexagram_ranged_2": {"name":"Hexagram R-II", "behavior":"hexagram", "shape":"hexagram", "form":"ranged", "tier":2, "radius":20.0, "max_hp":175.0, "damage":100, "speed":155.0, "score_value":8, "body_color":Color(0.30,0.55,1.0,1.0), "outline_color":Color(0.75,0.85,1.0,1.0), "preferred_distance_min":420.0, "preferred_distance_max":600.0, "fire_interval":3.0, "fire_range":900.0, "projectile_speed":285.0, "projectile_damage":100.0},
+	"hexagram_ranged_3": {"name":"Hexagram R-III", "behavior":"hexagram", "shape":"hexagram", "form":"ranged", "tier":3, "radius":22.0, "max_hp":300.0, "damage":100, "speed":165.0, "score_value":12, "body_color":Color(0.40,0.30,0.95,1.0), "outline_color":Color(0.80,0.75,1.0,1.0), "preferred_distance_min":420.0, "preferred_distance_max":600.0, "fire_interval":2.5, "fire_range":900.0, "projectile_speed":310.0, "projectile_damage":100.0},
 }
 const SPAWN_STRATEGY := [
 	{"start_time":0.0, "rates":{"chaser_1":14.0}},
 	{"start_time":60.0, "rates":{"chaser_1":16.0, "fast_1":4.0}},
-	{"start_time":120.0, "rates":{"chaser_1":18.0, "ranged_1":3.0, "fast_1":7.0}},
-	{"start_time":180.0, "rates":{"chaser_1":18.0, "ranged_1":5.0, "fast_1":8.0}},
-	{"start_time":240.0, "rates":{"chaser_1":14.0, "chaser_2":8.0, "ranged_1":6.0, "fast_1":10.0}},
-	{"start_time":300.0, "rates":{"chaser_1":10.0, "chaser_2":14.0, "ranged_1":4.0, "ranged_2":4.0, "fast_1":6.0, "fast_2":8.0}},
-	{"start_time":360.0, "rates":{"chaser_2":20.0, "ranged_1":3.0, "ranged_2":7.0, "fast_2":14.0}},
-	{"start_time":420.0, "rates":{"chaser_2":20.0, "chaser_3":6.0, "ranged_2":8.0, "fast_2":16.0}},
-	{"start_time":480.0, "rates":{"chaser_2":15.0, "chaser_3":12.0, "ranged_2":6.0, "ranged_3":5.0, "fast_2":10.0, "fast_3":10.0}},
-	{"start_time":540.0, "rates":{"chaser_2":10.0, "chaser_3":20.0, "ranged_2":4.0, "ranged_3":8.0, "fast_3":20.0}},
+	{"start_time":120.0, "rates":{"chaser_1":18.0, "ranged_1":3.0, "fast_1":7.0, "hexagram_melee_1":4.0}},
+	{"start_time":180.0, "rates":{"chaser_1":18.0, "ranged_1":5.0, "fast_1":8.0, "hexagram_melee_1":4.0}},
+	{"start_time":240.0, "rates":{"chaser_1":14.0, "chaser_2":8.0, "ranged_1":6.0, "fast_1":10.0, "hexagram_melee_1":4.0}},
+	{"start_time":300.0, "rates":{"chaser_1":10.0, "chaser_2":14.0, "ranged_1":4.0, "ranged_2":4.0, "fast_1":6.0, "fast_2":8.0, "hexagram_melee_2":4.0}},
+	{"start_time":360.0, "rates":{"chaser_2":20.0, "ranged_1":3.0, "ranged_2":7.0, "fast_2":14.0, "hexagram_melee_2":4.0}},
+	{"start_time":420.0, "rates":{"chaser_2":20.0, "chaser_3":6.0, "ranged_2":8.0, "fast_2":16.0, "hexagram_melee_2":4.0}},
+	{"start_time":480.0, "rates":{"chaser_2":15.0, "chaser_3":12.0, "ranged_2":6.0, "ranged_3":5.0, "fast_2":10.0, "fast_3":10.0, "hexagram_melee_3":4.0}},
+	{"start_time":540.0, "rates":{"chaser_2":10.0, "chaser_3":20.0, "ranged_2":4.0, "ranged_3":8.0, "fast_3":20.0, "hexagram_melee_3":4.0}},
 ]
 const BOSS_CONFIGS := {
 	"square_boss": {"boss_name":"Square Colossus", "shape":"square", "tier":1, "radius":60.0, "max_hp":3000.0, "damage":100, "speed":105.0, "score_value":75, "body_color":Color(0.66,0.10,0.16,1.0), "outline_color":Color(1.0,0.50,0.52,1.0)},
@@ -69,6 +78,7 @@ const ENEMY_SPAWN_MARGIN := 140.0
 const MAX_ENEMIES := 120
 const MAX_RANGED_ENEMIES := 18
 const MAX_FAST_ENEMIES := 36
+const MAX_HEXAGRAM_ENEMIES := 24
 const ENDLESS_START_TIME := 600.0
 const ENDLESS_RATE_GROWTH := 1.08
 const ENDLESS_HP_GROWTH := 1.12
@@ -99,6 +109,9 @@ var is_game_over := false
 var is_level_up_open := false
 var elapsed_seconds := 0.0
 var _spawn_budgets := {}
+# 六芒星分裂组积分记录:group_id -> true(已首杀给分)。仅首杀时写入,自然有界(=初始生成数)。
+var _granted_score_groups := {}
+var _next_hexagram_group_id := 0
 var _boss_intro
 var _boss_name_label: Label
 # 当前存活 boss 引用;为空表示当前没有 boss。
@@ -480,15 +493,31 @@ func _spawn_enemy(enemy_type: String) -> void:
 	if is_game_over or player == null or _count_regular_enemies() >= MAX_ENEMIES:
 		return
 	var config: Dictionary = ENEMY_CONFIGS[enemy_type]
-	var is_ranged := str(config.get("behavior", "chaser")) == "ranged"
-	var enemy = RangedEnemyScene.new() if is_ranged else EnemyScene.new()
+	var behavior := str(config.get("behavior", "chaser"))
+	var enemy
+	match behavior:
+		"hexagram":
+			enemy = HexagramEnemyScene.new()
+		"ranged":
+			enemy = RangedEnemyScene.new()
+		_:
+			enemy = EnemyScene.new()
 	enemy.apply_config(config)
-	_apply_endless_enemy_scaling(enemy, enemy_type, is_ranged)
+	# 远程类(ranged / hexagram 远程态)走带 fire_interval 的缩放分支;
+	# hexagram 近战态走普通分支(speed_cap 与 chaser 一致)。
+	var is_ranged_like := behavior == "ranged" or (behavior == "hexagram" and enemy.form == "ranged")
+	_apply_endless_enemy_scaling(enemy, enemy_type, is_ranged_like)
 	enemy.global_position = _get_spawn_position_near_view(enemy.radius)
 	enemy.target = player
 	enemy.died.connect(_on_enemy_died)
-	if is_ranged:
+	if behavior == "ranged" or behavior == "hexagram":
+		# hexagram 近战态不射击,但 setup_projectiles 无副作用,统一调用以简化分支
 		enemy.setup_projectiles(projectiles_layer, EnemyProjectileScene)
+	if behavior == "hexagram":
+		# 初始生成分配新 group_id;分裂子单位在 _on_hexagram_split 中继承父 group_id
+		enemy.group_id = _next_hexagram_group_id
+		_next_hexagram_group_id += 1
+		enemy.split_completed.connect(_on_hexagram_split)
 	enemies_layer.add_child(enemy)
 
 func _apply_endless_enemy_scaling(enemy, enemy_type: String, is_ranged: bool) -> void:
@@ -523,6 +552,9 @@ func _count_enemy_prefix(prefix: String) -> int:
 	return count
 
 func _is_enemy_category_capped(enemy_type: String) -> bool:
+	# 六芒星(近战+远程合计)统一上限,避免分裂指数膨胀
+	if enemy_type.begins_with("hexagram_"):
+		return get_tree().get_nodes_in_group("hexagram").size() >= MAX_HEXAGRAM_ENEMIES
 	if enemy_type.begins_with("ranged_"):
 		return _count_enemy_prefix("ranged") >= MAX_RANGED_ENEMIES
 	if enemy_type.begins_with("fast_"):
@@ -578,9 +610,53 @@ func _clamp_to_map(world_position: Vector2, margin: float = 0.0) -> Vector2:
 
 
 func _on_enemy_died(enemy) -> void:
-	score += enemy.score_value
+	var gained_score: int = int(enemy.score_value)
+	# 六芒星分裂组:同一组只首杀给分,其后该组任何击杀不给分
+	if enemy is HexagramEnemy:
+		var gid: int = int(enemy.group_id)
+		if _granted_score_groups.has(gid):
+			gained_score = 0
+		else:
+			_granted_score_groups[gid] = true
+	score += gained_score
 	_update_score_label()
 	_check_level_up()
+
+
+# 六芒星分裂抖动结束回调:生成同组子单位,继承父 group_id 与当前血量
+func _on_hexagram_split(parent, child_form: String) -> void:
+	if is_game_over or player == null:
+		return
+	if not is_instance_valid(parent):
+		return
+	# 上限保护:六芒星总数或全局敌人数达上限时跳过本次分裂
+	if get_tree().get_nodes_in_group("hexagram").size() >= MAX_HEXAGRAM_ENEMIES:
+		return
+	if _count_regular_enemies() >= MAX_ENEMIES:
+		return
+	var config_key := "hexagram_" + child_form + "_" + str(parent.tier)
+	if not ENEMY_CONFIGS.has(config_key):
+		return
+	var config: Dictionary = ENEMY_CONFIGS[config_key]
+	var child = HexagramEnemyScene.new()
+	child.apply_config(config)
+	# 远程态走带 fire_interval 的缩放;近战态走普通分支
+	var child_is_ranged := (child_form == "ranged")
+	_apply_endless_enemy_scaling(child, config_key, child_is_ranged)
+	# 血量继承:子单位 max_hp = hp = 父单位当前血量(父单位血量不变)
+	var inherited_hp: float = float(parent.hp)
+	child.max_hp = inherited_hp
+	child.hp = inherited_hp
+	# 位置:父单位附近偏移,限制在地图内
+	var offset := Vector2(randf_range(40.0, 80.0), randf_range(40.0, 80.0))
+	child.global_position = _clamp_to_map(parent.global_position + offset, child.radius)
+	child.target = player
+	child.died.connect(_on_enemy_died)
+	child.setup_projectiles(projectiles_layer, EnemyProjectileScene)
+	# 继承父 group_id:保证同组积分只给一次
+	child.group_id = parent.group_id
+	child.split_completed.connect(_on_hexagram_split)
+	enemies_layer.add_child(child)
 
 
 # === Boss schedule and intro ===

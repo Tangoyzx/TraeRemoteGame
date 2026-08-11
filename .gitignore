@@ -15,3 +15,6 @@ Thumbs.db
 .idea/
 *.tmp
 *.log
+
+# Trae IDE temporary share packages
+.trae-html-share-packages/
