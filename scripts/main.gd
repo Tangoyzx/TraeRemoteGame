@@ -34,7 +34,7 @@ const UPGRADE_OPTIONS := {
 	"thunder_ball_laser": {"title": "雷球·炮", "prerequisite": "thunder_ball"},
 	"thunder_ball_paralysis": {"title": "雷球·麻", "prerequisite": "thunder_ball"},
 }
-const GAME_VERSION := "v1.2.4"
+const GAME_VERSION := "v1.2.5"
 const ENEMY_CONFIGS := {
 	"chaser_1": {"name":"Chaser I", "behavior":"chaser", "shape":"square", "tier":1, "radius":18.0, "max_hp":100.0, "damage":100, "speed":190.0, "score_value":2, "body_color":Color(0.76,0.18,0.20,1.0), "outline_color":Color(1.0,0.56,0.58,1.0)},
 	"chaser_2": {"name":"Chaser II", "behavior":"chaser", "shape":"square", "tier":2, "radius":20.0, "max_hp":200.0, "damage":100, "speed":200.0, "score_value":3, "body_color":Color(0.88,0.25,0.18,1.0), "outline_color":Color(1.0,0.72,0.50,1.0)},
@@ -505,7 +505,7 @@ func _spawn_enemy(enemy_type: String) -> void:
 	enemy.apply_config(config)
 	# 远程类(ranged / hexagram 远程态)走带 fire_interval 的缩放分支;
 	# hexagram 近战态走普通分支(speed_cap 与 chaser 一致)。
-	var is_ranged_like := behavior == "ranged" or (behavior == "hexagram" and enemy.form == "ranged")
+	var is_ranged_like: bool = behavior == "ranged" or (behavior == "hexagram" and enemy.form == "ranged")
 	_apply_endless_enemy_scaling(enemy, enemy_type, is_ranged_like)
 	enemy.global_position = _get_spawn_position_near_view(enemy.radius)
 	enemy.target = player
