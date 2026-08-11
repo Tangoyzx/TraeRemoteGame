@@ -8,7 +8,7 @@ signal split_completed(parent: HexagramEnemy, child_form: String)
 const FIRST_SPLIT_INTERVAL := 4.0
 const SPLIT_INTERVAL := 10.0
 const SHAKE_DURATION := 2.0
-const RANGED_FORM_PROBABILITY := 0.10
+const RANGED_FORM_PROBABILITY := 0.50
 const SHAKE_OFFSET := 2.5
 const FLASH_FREQUENCY := 8.0
 
