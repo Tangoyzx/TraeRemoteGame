@@ -34,7 +34,7 @@ const UPGRADE_OPTIONS := {
 	"thunder_ball_laser": {"title": "雷球·炮", "prerequisite": "thunder_ball"},
 	"thunder_ball_paralysis": {"title": "雷球·麻", "prerequisite": "thunder_ball"},
 }
-const GAME_VERSION := "v1.2.5"
+const GAME_VERSION := "v1.2.6"
 const ENEMY_CONFIGS := {
 	"chaser_1": {"name":"Chaser I", "behavior":"chaser", "shape":"square", "tier":1, "radius":18.0, "max_hp":100.0, "damage":100, "speed":190.0, "score_value":2, "body_color":Color(0.76,0.18,0.20,1.0), "outline_color":Color(1.0,0.56,0.58,1.0)},
 	"chaser_2": {"name":"Chaser II", "behavior":"chaser", "shape":"square", "tier":2, "radius":20.0, "max_hp":200.0, "damage":100, "speed":200.0, "score_value":3, "body_color":Color(0.88,0.25,0.18,1.0), "outline_color":Color(1.0,0.72,0.50,1.0)},

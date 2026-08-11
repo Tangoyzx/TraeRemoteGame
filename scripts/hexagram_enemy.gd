@@ -5,6 +5,7 @@ extends RangedEnemy
 # 信号在分裂抖动结束时发射,由 main.gd 接收以生成同组子单位。
 signal split_completed(parent: HexagramEnemy, child_form: String)
 
+const FIRST_SPLIT_INTERVAL := 4.0
 const SPLIT_INTERVAL := 10.0
 const SHAKE_DURATION := 2.0
 const RANGED_FORM_PROBABILITY := 0.10
@@ -15,6 +16,8 @@ var form := "melee"
 var group_id := -1
 
 var _split_timer := 0.0
+# 首次分裂等待更短,让玩家早见识分裂机制;分裂触发后切换为常规周期
+var _split_threshold := FIRST_SPLIT_INTERVAL
 var _shaking := false
 var _shake_elapsed := 0.0
 var _flash_time := 0.0
@@ -53,8 +56,10 @@ func _process(delta: float) -> void:
 		super(delta)
 	# 分裂计时(麻痹期间也推进,分裂为内部机制)
 	_split_timer += delta
-	if _split_timer >= SPLIT_INTERVAL:
+	if _split_timer >= _split_threshold:
 		_split_timer = 0.0
+		# 首次分裂后切换为常规周期,后续每 10 秒分裂一次
+		_split_threshold = SPLIT_INTERVAL
 		_start_split()
 
 
